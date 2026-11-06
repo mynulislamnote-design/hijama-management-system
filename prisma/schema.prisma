@@ -1,0 +1,29 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Patient {
+  id           String    @id @default(uuid())
+  name         String
+  phone        String
+  problem      String
+  serviceType  String
+  feePaid      Float
+  sessionDate  String
+  nextFollowUp String?
+  createdAt    DateTime  @default(now())
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  type        String
+  category    String
+  amount      Float
+  note        String?
+  date        String
+  createdAt   DateTime @default(now())
+}
