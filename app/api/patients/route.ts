@@ -13,6 +13,8 @@ export async function POST(request: Request) {
       feePaid,
       sessionDate,
       nextFollowUp,
+      raqiName,
+      problemCategory,
     } = body;
 
     if (!name || !phone || !feePaid) {
@@ -33,6 +35,8 @@ export async function POST(request: Request) {
           sessionDate || new Date().toISOString().split("T")[0],
         ),
         nextFollowUp: nextFollowUp ? String(nextFollowUp) : null,
+        raqiName: String(raqiName || "প্রধান রাক্বী"),
+        problemCategory: String(problemCategory || "JINN"),
       },
     });
 
@@ -47,13 +51,14 @@ export async function POST(request: Request) {
               : "রুকিয়াহ ও হিজামা উভয় সার্ভিস";
         const welcomeMsg = `🏥 *শরঈ রুকইয়াহ ও সুন্নতি হিজামা সেন্টার*
 
-আসসালামু আলাইকুম ${name} সাহেব/সেবাগ্রহীতা,
+আসসালামু আলাইকুম ${name}!
 আজ আমাদের সেন্টারে আপনার সেবা (${serviceNameBn}) সফলভাবে সম্পন্ন হয়েছে।
-💰 ফি প্রদান করেছেন: ৳${feePaid}
+🩺 চিকিৎসায় থাকবেন: ${raqiName || "প্রধান রাক্বী"}
+💰 পরিশোধিত ফি: ৳${feePaid}
 📅 তারিখ: ${sessionDate}
 ${nextFollowUp ? `🔄 পরবর্তী ফলো-আপ: ${nextFollowUp}` : ""}
 
-আল্লাহ আপনাকে পরিপূর্ণ শিফা দান করুন। আমিন!`;
+আল্লাহ তায়ালা আপনাকে পরিপূর্ণ শিফা দান করুন। আমিন!`;
 
         await sendWhatsAppMessage(phoneNumberStr, welcomeMsg);
       }
@@ -83,7 +88,7 @@ export async function GET() {
   }
 }
 
-// নতুন: ১-ক্লিক উপস্থিতি ও নতুন সেশন আপডেট করার PATCH API
+// সেশন সম্পন্ন / উপস্থিতি আপডেট করার শতভাগ কার্যকরী PATCH API
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
@@ -97,46 +102,72 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // রোগীর তথ্য ডাটাবেজে আপডেট
     const today = sessionDate || new Date().toISOString().split("T")[0];
+    const addFee = Number(newFee || 0);
 
-    // better-sqlite3 এ সরাসরি আপডেট কোয়েরি
-    const stmt = (db as any).sqlite
-      ? (db as any).sqlite.prepare(`
-          UPDATE "Patient" 
-          SET "feePaid" = "feePaid" + ?, "sessionDate" = ?, "nextFollowUp" = ?, "problem" = ?
-          WHERE "id" = ?
-        `)
-      : null;
-
-    if (stmt) {
-      stmt.run(
-        Number(newFee || 0),
-        today,
-        nextFollowUp || null,
-        String(problemUpdate || ""),
-        String(patientId),
+    const sqlite = (db as any).sqlite;
+    if (!sqlite) {
+      return NextResponse.json(
+        { error: "Database connection error" },
+        { status: 500 },
       );
     }
 
-    // রোগীকে নতুন সেশনের হোয়াটসঅ্যাপ রসিদ পাঠানো
-    try {
-      const patientStmt = (db as any).sqlite?.prepare(
-        'SELECT * FROM "Patient" WHERE "id" = ?',
-      );
-      const patient = patientStmt ? patientStmt.get(patientId) : null;
+    // ১. রোগীর পুরানো তথ্য ফেচ করা
+    const getStmt = sqlite.prepare('SELECT * FROM "Patient" WHERE "id" = ?');
+    const patient: any = getStmt.get(patientId);
 
-      if (patient && patient.phone) {
+    if (!patient) {
+      return NextResponse.json({ error: "রোগী পাওয়া যায়নি" }, { status: 404 });
+    }
+
+    const updatedTotalFee = Number(patient.feePaid || 0) + addFee;
+
+    // ২. রোগীর ডাটাবেজ আপডেট (ফি, সেশন ডেট, ফলো-আপ ও সমস্যা নোট)
+    const updateStmt = sqlite.prepare(`
+      UPDATE "Patient" 
+      SET "feePaid" = ?, "sessionDate" = ?, "nextFollowUp" = ?, "problem" = ?
+      WHERE "id" = ?
+    `);
+    updateStmt.run(
+      updatedTotalFee,
+      today,
+      nextFollowUp || null,
+      String(problemUpdate || patient.problem),
+      String(patientId),
+    );
+
+    // ৩. নতুন সেশনের ফি লেজারে আয় (INCOME) হিসেবে যোগ করা
+    if (addFee > 0) {
+      const txId = "tx_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+      const txStmt = sqlite.prepare(`
+        INSERT INTO "Transaction" ("id", "type", "category", "amount", "note", "date", "createdAt")
+        VALUES (?, 'INCOME', 'PATIENT_FEE', ?, ?, ?, ?)
+      `);
+      txStmt.run(
+        txId,
+        addFee,
+        `ফলো-আপ সেশন ফি: ${patient.name}`,
+        today,
+        new Date().toISOString(),
+      );
+    }
+
+    // ৪. রোগীকে নতুন সেশনের হোয়াটসঅ্যাপ রসিদ পাঠানো
+    try {
+      if (patient.phone) {
         const updateMsg = `🏥 *শরঈ রুকইয়াহ ও সুন্নতি হিজামা সেন্টার*
 
 আসসালামু আলাইকুম ${patient.name}!
 আলহামদুলিল্লাহ, আজ (${today}) সেন্টারে আপনার সেশনটি সফলভাবে সম্পন্ন হয়েছে।
-💰 আজকের সেশন ফি: ৳${newFee}
+🩺 চিকিৎসায় ছিলেন: ${patient.raqiName || "প্রধান রাক্বী"}
+💰 আজকের সেশন ফি: ৳${addFee} (মোট পরিশোধ: ৳${updatedTotalFee})
 ${nextFollowUp ? `🔄 আপনার পরবর্তী নির্ধারিত ফলো-আপ: ${nextFollowUp}` : "🔄 নিয়মিত আমল ও দোয়া চালু রাখুন।"}
 
 আল্লাহ আপনাকে সুস্থতা দান করুন। আমিন!`;
 
         await sendWhatsAppMessage(patient.phone, updateMsg);
+        console.log(`✅ Session update WhatsApp sent to ${patient.phone}`);
       }
     } catch (waErr) {
       console.error("WhatsApp Session Receipt Error:", waErr);
