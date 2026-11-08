@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 
+// ডাটাবেজ ডিরেক্টরি নিশ্চিত করা
 const prismaDir = path.join(process.cwd(), "prisma");
 if (!fs.existsSync(prismaDir)) {
   fs.mkdirSync(prismaDir, { recursive: true });
@@ -42,7 +43,6 @@ sqlite.exec(`
   );
 `);
 
-// ২. Patient টেবিলে নতুন কলামগুলো সেফলি যুক্ত করা (যদি আগে না থাকে)
 try {
   sqlite.exec('ALTER TABLE "Patient" ADD COLUMN "raqiName" TEXT;');
 } catch (e) {}
@@ -50,7 +50,6 @@ try {
   sqlite.exec('ALTER TABLE "Patient" ADD COLUMN "problemCategory" TEXT;');
 } catch (e) {}
 
-// প্রাথমিক কিছু রাক্বী ডাটাবেজে না থাকলে নিজে থেকেই যোগ করা
 try {
   const countStmt = sqlite.prepare('SELECT COUNT(*) as count FROM "Raqi"');
   const result: any = countStmt.get();
@@ -73,7 +72,9 @@ try {
   }
 } catch (e) {}
 
+// কুয়েরি অবজেক্ট (এখানে sqlite এক্সপোর্ট করা হলো যাতে API থেকে কল করা যায়)
 const dbInstance = {
+  sqlite, // <-- এই লাইনটি মিসিং ছিল, যার কারণে Database connection error আসছিল!
   raqi: {
     async findMany() {
       try {

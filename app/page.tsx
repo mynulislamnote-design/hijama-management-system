@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   Users,
   DollarSign,
@@ -25,6 +26,14 @@ import {
   ArrowUpRight,
   UserCheck2,
   Plus,
+  Trash2,
+  Lock,
+  ShieldAlert,
+  LogOut,
+  EyeOff,
+  Printer,
+  Download,
+  FileSpreadsheet,
 } from "lucide-react";
 
 interface Patient {
@@ -66,7 +75,7 @@ const getCategoryNameBn = (cat: string) => {
     MEDICINE_CUPS: "কাপ ও সার্জিক্যাল সামগ্রী",
     PRODUCTS_PURCHASE: "তেল/মধু স্টক ক্রয়",
     UTILITY: "বিদ্যুৎ ও নেট বিল",
-    STAFF_SALARY: "স্টাফ সম্মানী",
+    STAFF_SALARY: "স্টাফ/থেরাপিস্ট সম্মানী",
     CONVEYANCE: "যাতায়াত খরচ",
     REFRESHMENT: "মেহমানদারি ও নাস্তা",
     OTHER_EXPENSE: "অন্যান্য ব্যয়",
@@ -117,6 +126,40 @@ const getProblemBadge = (cat?: string) => {
 };
 
 export default function HijamaAdminDashboard() {
+  // ১. মাস্টার পাসওয়ার্ড সিকিউরিটি স্টেট
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [inputPassword, setInputPassword] = useState("");
+  const [passwordError, setPasswordError] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    const authStatus = sessionStorage.getItem("hijama_admin_auth");
+    if (authStatus === "true") {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const handleAdminLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const correctPassword =
+      process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "Addawah@food";
+
+    if (inputPassword.trim() === correctPassword.trim()) {
+      sessionStorage.setItem("hijama_admin_auth", "true");
+      setIsAuthenticated(true);
+      setPasswordError(false);
+    } else {
+      setPasswordError(true);
+    }
+  };
+
+  const handleAdminLogout = () => {
+    sessionStorage.removeItem("hijama_admin_auth");
+    setIsAuthenticated(false);
+    setInputPassword("");
+  };
+
+  // মূল ড্যাশবোর্ড স্টেটসমূহ
   const [activeTab, setActiveTab] = useState<"PATIENTS" | "TRANSACTIONS">(
     "PATIENTS",
   );
@@ -223,8 +266,10 @@ export default function HijamaAdminDashboard() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (isAuthenticated) {
+      fetchData();
+    }
+  }, [isAuthenticated]);
 
   const handleAddRaqiSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,6 +297,25 @@ export default function HijamaAdminDashboard() {
       alert("সার্ভার এরর");
     } finally {
       setIsSubmittingRaqi(false);
+    }
+  };
+
+  const handleDeleteRaqi = async (id: string, raqiTitle: string) => {
+    if (!confirm(`আপনি কি "${raqiTitle}"-কে তালিকা থেকে মুছে ফেলতে চান?`))
+      return;
+    try {
+      const res = await fetch(`/api/raqis?id=${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setRaqis((prev) => prev.filter((r) => r.id !== id));
+        if (raqiName === raqiTitle) {
+          setRaqiName("");
+        }
+        alert("রাক্বী সফলভাবে মুছে ফেলা হয়েছে!");
+      } else {
+        alert("ডিলিট করা যায়নি!");
+      }
+    } catch (err) {
+      alert("সার্ভার এরর");
     }
   };
 
@@ -375,14 +439,14 @@ export default function HijamaAdminDashboard() {
 
       if (res.ok) {
         setSuccessMsg(
-          "আলহামদুলিল্লাহ! রোগীর তথ্য সেভ হয়েছে এবং ফি আয়-ব্যয় লেজারে যোগ হয়েছে।",
+          `আলহামদুলিল্লাহ! ${name}-এর তথ্য সেভ হয়েছে এবং ফি আয়-ব্যয় লেজারে যোগ হয়েছে।`,
         );
         setName("");
         setPhone("");
         setProblem("");
         setFeePaid("");
         setNextFollowUp("");
-        fetchData();
+        await fetchData();
         setTimeout(() => setSuccessMsg(""), 6000);
       } else {
         alert(`সেভ হয়নি! কারণ: ${data.error || "অজানা সমস্যা"}`);
@@ -394,7 +458,6 @@ export default function HijamaAdminDashboard() {
     }
   };
 
-  // ১-ক্লিক উপস্থিতি ও সেশন সম্পন্ন হ্যান্ডলার
   const handleCompleteSessionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!patientForAttendance) return;
@@ -417,19 +480,19 @@ export default function HijamaAdminDashboard() {
 
       if (res.ok) {
         setSuccessMsg(
-          `আলহামদুলিল্লাহ! ${patientForAttendance.name}-এর সেশন সফলভাবে সম্পন্ন হয়েছে ও ফি লেজারে যুক্ত হয়েছে।`,
+          `আলহামদুলিল্লাহ! ${patientForAttendance.name}-এর সেশন সম্পন্ন হয়েছে ও ফি লেজারে যুক্ত হয়েছে।`,
         );
         setPatientForAttendance(null);
         setSessionFee("");
         setNewNextFollowUp("");
         setUpdatedProblemNote("");
-        await fetchData(); // ডাটা রিফ্রেশ করা যাতে সাথে সাথে টেবিল ও লেজার আপডেট হয়
+        await fetchData();
         setTimeout(() => setSuccessMsg(""), 6000);
       } else {
         alert(`সেশন আপডেট হয়নি! কারণ: ${data.error || "অজানা সমস্যা"}`);
       }
     } catch (err) {
-      alert(`সার্ভার কানেকশন এরর: ${err}`);
+      alert(`সার্ভার এরর: ${err}`);
     } finally {
       setIsUpdatingSession(false);
     }
@@ -457,7 +520,7 @@ export default function HijamaAdminDashboard() {
         setSuccessMsg("লেনদেন সফলভাবে রেকর্ড করা হয়েছে।");
         setTxAmount("");
         setTxNote("");
-        fetchData();
+        await fetchData();
         setTimeout(() => setSuccessMsg(""), 5000);
       }
     } catch (err) {
@@ -503,9 +566,208 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
       .reduce((sum, t) => sum + t.amount, 0);
   }, [transactions, todayStr]);
 
+  const getPatientSessions = (patientName: string) => {
+    return transactions.filter(
+      (t) =>
+        t.type === "INCOME" &&
+        t.category === "PATIENT_FEE" &&
+        t.note?.includes(patientName),
+    );
+  };
+
+  // ২. এক্সেল (CSV) এক্সপোর্ট ফাংশনসমূহ (বাংলা সাপোর্ট সহ)
+  const exportPatientsToCSV = () => {
+    if (filteredPatients.length === 0) {
+      alert("এক্সপোর্ট করার মতো কোনো রোগীর তথ্য নেই!");
+      return;
+    }
+    const headers = [
+      "রোগীর নাম",
+      "মোবাইল",
+      "চিকিৎসক/রাক্বী",
+      "রোগের ধরন",
+      "গৃহীত সেবা",
+      "সমস্যা/নোট",
+      "চিকিৎসার তারিখ",
+      "পরবর্তী ফলো-আপ",
+      "মোট ফি (টাকা)",
+    ];
+    const rows = filteredPatients.map((p) => [
+      `"${p.name.replace(/"/g, '""')}"`,
+      `"${p.phone}"`,
+      `"${(p.raqiName || "প্রধান রাক্বী").replace(/"/g, '""')}"`,
+      `"${p.problemCategory || "JINN"}"`,
+      `"${p.serviceType === "RUKYAH" ? "শরঈ রুকিয়াহ" : p.serviceType === "HIJAMA" ? "সুন্নতি হিজামা" : "রুকিয়াহ + হিজামা"}"`,
+      `"${(p.problem || "").replace(/"/g, '""')}"`,
+      `"${p.sessionDate}"`,
+      `"${p.nextFollowUp || "—"}"`,
+      p.feePaid,
+    ]);
+    const csvContent =
+      "\uFEFF" +
+      [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute(
+      "download",
+      `Patients_Report_${todayStr || "export"}.csv`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportTransactionsToCSV = () => {
+    if (filteredTransactions.length === 0) {
+      alert("এক্সপোর্ট করার মতো কোনো লেনদেনের তথ্য নেই!");
+      return;
+    }
+    const headers = ["তারিখ", "খাত", "বিবরণ", "লেনদেনের ধরন", "পরিমাণ (টাকা)"];
+    const rows = filteredTransactions.map((t) => [
+      `"${t.date}"`,
+      `"${getCategoryNameBn(t.category)}"`,
+      `"${(t.note || "").replace(/"/g, '""')}"`,
+      `"${t.type === "INCOME" ? "আয়" : "ব্যয়"}"`,
+      t.type === "INCOME" ? t.amount : -t.amount,
+    ]);
+    const csvContent =
+      "\uFEFF" +
+      [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute(
+      "download",
+      `Transactions_Report_${todayStr || "export"}.csv`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // ৩. ১-ক্লিক প্রিন্ট উপযোগী মানি রিসিট স্লিপ
+  const handlePrintReceipt = (p: Patient) => {
+    const printWindow = window.open("", "_blank", "width=550,height=700");
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>মানি রিসিট - ${p.name}</title>
+          <style>
+            body { font-family: 'SolaimanLipi', sans-serif, system-ui; padding: 30px; color: #1e293b; }
+            .receipt-box { border: 2px dashed #059669; padding: 25px; border-radius: 16px; max-width: 450px; margin: auto; }
+            .header { text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px; margin-bottom: 18px; }
+            .header h2 { margin: 0; color: #065f46; font-size: 20px; font-weight: 800; }
+            .header p { margin: 4px 0 0; font-size: 11px; color: #64748b; }
+            .row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+            .label { color: #64748b; font-weight: 600; }
+            .val { font-weight: 700; color: #0f172a; }
+            .fee-box { background: #ecfdf5; border: 1px solid #a7f3d0; padding: 12px; border-radius: 10px; margin: 18px 0; display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; color: #065f46; }
+            .footer { margin-top: 30px; display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; padding-top: 25px; }
+            .sign { border-top: 1px solid #94a3b8; width: 130px; text-align: center; padding-top: 6px; }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-box">
+            <div class="header">
+              <h2>শরঈ রুকইয়াহ ও সুন্নতি হিজামা সেন্টার</h2>
+              <p>রোগী চিকিৎসা ও সেবা রসিদ</p>
+            </div>
+            <div class="row"><span class="label">রসিদ নং:</span><span class="val">#${p.id.slice(-6).toUpperCase()}</span></div>
+            <div class="row"><span class="label">তারিখ:</span><span class="val">${p.sessionDate}</span></div>
+            <div class="row"><span class="label">রোগীর নাম:</span><span class="val">${p.name}</span></div>
+            <div class="row"><span class="label">মোবাইল:</span><span class="val">${p.phone}</span></div>
+            <div class="row"><span class="label">চিকিৎসক / রাক্বী:</span><span class="val">${p.raqiName || "প্রধান রাক্বী"}</span></div>
+            <div class="row"><span class="label">গৃহীত সেবা:</span><span class="val">${p.serviceType === "RUKYAH" ? "শরঈ রুকিয়াহ" : p.serviceType === "HIJAMA" ? "সুন্নতি হিজামা" : "রুকিয়াহ + হিজামা"}</span></div>
+            <div class="row"><span class="label">পরবর্তী সেশন:</span><span class="val">${p.nextFollowUp || "নির্ধারিত নেই"}</span></div>
+            <div class="fee-box"><span>পরিশোধিত ফি:</span><span>৳${p.feePaid}</span></div>
+            <div class="footer">
+              <div>মুদ্রণ: ${new Date().toLocaleDateString("bn-BD")}</div>
+              <div class="sign">কর্তৃপক্ষের স্বাক্ষর</div>
+            </div>
+          </div>
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  // ১. যদি পাসওয়ার্ড না দিয়ে থাকে তবে সিকিউরিটি লক স্ক্রিন শো করবে
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans text-slate-100">
+        <div className="w-full max-w-sm bg-slate-800/90 backdrop-blur-md rounded-3xl p-6 shadow-2xl border border-slate-700 space-y-5 animate-in fade-in zoom-in-95">
+          <div className="text-center space-y-2">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto shadow-inner">
+              <Lock className="w-7 h-7" />
+            </div>
+            <h2 className="text-lg font-black text-white">
+              রুকইয়াহ ও হিজামা অ্যাডমিন পোর্টাল
+            </h2>
+            <p className="text-xs text-slate-400">
+              এই পেজটি শুধুমাত্র সেন্টারের কর্তৃপক্ষের জন্য সংরক্ষিত
+            </p>
+          </div>
+
+          <form onSubmit={handleAdminLogin} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-300 block">
+                মাস্টার সিক্রেট পাসওয়ার্ড দিন:
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="পাসওয়ার্ড লিখুন..."
+                  value={inputPassword}
+                  onChange={(e) => {
+                    setInputPassword(e.target.value);
+                    setPasswordError(false);
+                  }}
+                  required
+                  className="w-full text-sm pl-4 pr-10 py-3 rounded-xl bg-slate-950/70 border border-slate-600 focus:border-emerald-500 focus:outline-none text-white transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-200"
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+              {passwordError && (
+                <span className="text-[11px] font-bold text-rose-400 flex items-center gap-1 mt-1">
+                  <ShieldAlert className="w-3.5 h-3.5" /> ভুল পাসওয়ার্ড! আবার
+                  চেষ্টা করুন।
+                </span>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-3 rounded-xl text-xs shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 active:scale-95"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>ড্যাশবোর্ডে প্রবেশ করুন</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-16">
-      {/* হেডার */}
+      {/* হেডার (লক/লগআউট বাটন সহ) */}
       <header className="bg-emerald-800 text-white shadow-md py-4 px-4 sticky top-0 z-30">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -540,9 +802,14 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
             >
               📊 টেস্ট সামারি পাঠান
             </button>
-            <span className="hidden md:inline-block bg-emerald-900 text-emerald-200 text-xs font-bold px-3 py-1.5 rounded-full border border-emerald-600">
-              🟢 সিস্টেম সচল
-            </span>
+            <button
+              onClick={handleAdminLogout}
+              className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-xs"
+              title="অ্যাডমিন প্যানেল লক করুন"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              লক / লগআউট
+            </button>
           </div>
         </div>
       </header>
@@ -800,7 +1067,7 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
               </form>
             </div>
 
-            {/* ডান পাশ: লাইভ সার্চ, ফলো-আপ ভিউ ও টেবিল */}
+            {/* ডান পাশ: লাইভ সার্চ, ফলো-আপ ভিউ, এক্সেল ডাউনলোড ও টেবিল */}
             <div className="md:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col space-y-3 p-4">
               <div className="space-y-2 border-b pb-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -831,6 +1098,17 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
                   </div>
 
                   <div className="flex items-center gap-1.5">
+                    {/* এক্সেল ডাউনলোড বাটন */}
+                    <button
+                      type="button"
+                      onClick={exportPatientsToCSV}
+                      className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1 transition-all"
+                      title="রোগীদের তালিকা এক্সেলে ডাউনলোড করুন"
+                    >
+                      <Download className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>এক্সেল</span>
+                    </button>
+
                     <Filter className="w-3.5 h-3.5 text-slate-400" />
                     <select
                       value={selectedProblemFilter}
@@ -869,6 +1147,7 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
                 </div>
               </div>
 
+              {/* রোগী তালিকা টেবিল */}
               <div className="overflow-x-auto flex-1">
                 <table className="w-full text-left text-xs text-slate-600">
                   <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
@@ -877,7 +1156,6 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
                       <th className="p-3">সমস্যা ও রাক্বী</th>
                       <th className="p-3">তারিখ</th>
                       <th className="p-3">ফলো-আপ</th>
-                      <th className="p-3 text-right">ফি</th>
                       <th className="p-3 text-center">উপস্থিতি / অ্যাকশন</th>
                     </tr>
                   </thead>
@@ -885,7 +1163,7 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
                     {filteredPatients.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={6}
+                          colSpan={5}
                           className="text-center p-8 text-slate-400"
                         >
                           {patientViewMode === "TODAY_FOLLOWUP"
@@ -938,11 +1216,8 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
                                 <span className="text-slate-400">—</span>
                               )}
                             </td>
-                            <td className="p-3 font-black text-right text-emerald-700">
-                              ৳{p.feePaid}
-                            </td>
                             <td className="p-3 text-center">
-                              <div className="flex items-center justify-center gap-1.5">
+                              <div className="flex items-center justify-center gap-1">
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -970,6 +1245,16 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
                                   </button>
                                 )}
 
+                                {/* প্রিন্ট মানি রিসিট বাটন */}
+                                <button
+                                  type="button"
+                                  onClick={() => handlePrintReceipt(p)}
+                                  className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-all"
+                                  title="মানি রিসিট প্রিন্ট করুন"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                </button>
+
                                 <button
                                   type="button"
                                   onClick={() => setSelectedPatientForView(p)}
@@ -994,7 +1279,7 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
         {/* ট্যাব ২: আয়-ব্যয় লেজার ও রিপোর্ট */}
         {activeTab === "TRANSACTIONS" && (
           <div className="space-y-6">
-            {/* ফিল্টার বার */}
+            {/* টাইম ও ক্যাটাগরি ফিল্টার বার */}
             <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
                 <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
@@ -1084,56 +1369,69 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center gap-3 pt-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-bold text-slate-500">
-                    ধরন:
-                  </span>
-                  <select
-                    value={txTypeFilter}
-                    onChange={(e) => setTxTypeFilter(e.target.value)}
-                    className="text-xs font-bold p-1.5 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none"
-                  >
-                    <option value="ALL">আয় ও ব্যয় উভয়ই</option>
-                    <option value="INCOME">শুধু আয় (+)</option>
-                    <option value="EXPENSE">শুধু ব্যয় (-)</option>
-                  </select>
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-slate-500">
+                      ধরন:
+                    </span>
+                    <select
+                      value={txTypeFilter}
+                      onChange={(e) => setTxTypeFilter(e.target.value)}
+                      className="text-xs font-bold p-1.5 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none"
+                    >
+                      <option value="ALL">আয় ও ব্যয় উভয়ই</option>
+                      <option value="INCOME">শুধু আয় (+)</option>
+                      <option value="EXPENSE">শুধু ব্যয় (-)</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-slate-500">
+                      খাত:
+                    </span>
+                    <select
+                      value={txCategoryFilter}
+                      onChange={(e) => setTxCategoryFilter(e.target.value)}
+                      className="text-xs font-bold p-1.5 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none"
+                    >
+                      <option value="ALL">সকল খাত</option>
+                      <optgroup label="আয়ের খাতসমূহ">
+                        <option value="PATIENT_FEE">রোগীর ফি</option>
+                        <option value="PRODUCTS_SALE">
+                          তেল/মধু/সামগ্রী বিক্রয়
+                        </option>
+                        <option value="DONATION_GIFT">হাদিয়া / অনুদান</option>
+                        <option value="OTHER_INCOME">অন্যান্য আয়</option>
+                      </optgroup>
+                      <optgroup label="ব্যয়ের খাতসমূহ">
+                        <option value="RENT">সেন্টার ভাড়া</option>
+                        <option value="MEDICINE_CUPS">
+                          কাপ ও সার্জিক্যাল সামগ্রী
+                        </option>
+                        <option value="PRODUCTS_PURCHASE">
+                          তেল/মধু স্টক ক্রয়
+                        </option>
+                        <option value="UTILITY">বিদ্যুৎ ও নেট বিল</option>
+                        <option value="STAFF_SALARY">স্টাফ সম্মানী</option>
+                        <option value="CONVEYANCE">যাতায়াত খরচ</option>
+                        <option value="REFRESHMENT">মেহমানদারি ও নাস্তা</option>
+                        <option value="OTHER_EXPENSE">অন্যান্য ব্যয়</option>
+                      </optgroup>
+                    </select>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-bold text-slate-500">
-                    খাত:
-                  </span>
-                  <select
-                    value={txCategoryFilter}
-                    onChange={(e) => setTxCategoryFilter(e.target.value)}
-                    className="text-xs font-bold p-1.5 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none"
-                  >
-                    <option value="ALL">সকল খাত</option>
-                    <optgroup label="আয়ের খাতসমূহ">
-                      <option value="PATIENT_FEE">রোগীর ফি</option>
-                      <option value="PRODUCTS_SALE">
-                        তেল/মধু/সামগ্রী বিক্রয়
-                      </option>
-                      <option value="DONATION_GIFT">হাদিয়া / অনুদান</option>
-                      <option value="OTHER_INCOME">অন্যান্য আয়</option>
-                    </optgroup>
-                    <optgroup label="ব্যয়ের খাতসমূহ">
-                      <option value="RENT">সেন্টার ভাড়া</option>
-                      <option value="MEDICINE_CUPS">
-                        কাপ ও সার্জিক্যাল সামগ্রী
-                      </option>
-                      <option value="PRODUCTS_PURCHASE">
-                        তেল/মধু স্টক ক্রয়
-                      </option>
-                      <option value="UTILITY">বিদ্যুৎ ও নেট বিল</option>
-                      <option value="STAFF_SALARY">স্টাফ সম্মানী</option>
-                      <option value="CONVEYANCE">যাতায়াত খরচ</option>
-                      <option value="REFRESHMENT">মেহমানদারি ও নাস্তা</option>
-                      <option value="OTHER_EXPENSE">অন্যান্য ব্যয়</option>
-                    </optgroup>
-                  </select>
-                </div>
+                {/* লেজার এক্সেল ডাউনলোড বাটন */}
+                <button
+                  type="button"
+                  onClick={exportTransactionsToCSV}
+                  className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+                  title="লেজার রিপোর্ট এক্সেলে ডাউনলোড করুন"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>লেজার এক্সেল ডাউনলোড</span>
+                </button>
               </div>
             </div>
 
@@ -1448,6 +1746,46 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
               </button>
             </div>
 
+            {/* বর্তমান রাক্বীদের তালিকা ও ডিলিট অপশন */}
+            <div className="space-y-1.5 border-b pb-3">
+              <label className="text-[11px] font-bold text-slate-700 block">
+                বর্তমান রাক্বী তালিকা:
+              </label>
+              <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                {raqis.length === 0 ? (
+                  <p className="text-[10px] text-slate-400 italic">
+                    কোনো রাক্বী যুক্ত নেই
+                  </p>
+                ) : (
+                  raqis.map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-200"
+                    >
+                      <div>
+                        <span className="font-bold text-xs text-slate-800 block">
+                          {r.name}
+                        </span>
+                        {r.phone && (
+                          <span className="text-[10px] text-slate-400">
+                            {r.phone}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRaqi(r.id, r.name)}
+                        className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+                        title="মুছে ফেলুন"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
             <form onSubmit={handleAddRaqiSubmit} className="space-y-3">
               <div>
                 <label className="text-[11px] font-bold text-slate-700 block mb-1">
@@ -1542,7 +1880,7 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
                   type="date"
                   value={newNextFollowUp}
                   onChange={(e) => setNewNextFollowUp(e.target.value)}
-                  className="w-full text-xs font-bold p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
@@ -1555,7 +1893,7 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
                   placeholder="যেমন: ব্যথা ৫০% কমেছে, আরও ১টি সেশন লাগবে"
                   value={updatedProblemNote}
                   onChange={(e) => setUpdatedProblemNote(e.target.value)}
-                  className="w-full text-xs font-bold p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
                 />
               </div>
 
@@ -1631,16 +1969,11 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
                       : "রুকিয়াহ + হিজামা"}
                 </span>
               </div>
+
               <div className="flex justify-between border-b pb-1.5 border-slate-200">
-                <span className="text-slate-500">চিকিৎসার তারিখ:</span>
+                <span className="text-slate-500">সর্বশেষ সেশন:</span>
                 <span className="font-bold text-slate-900">
                   {selectedPatientForView.sessionDate}
-                </span>
-              </div>
-              <div className="flex justify-between border-b pb-1.5 border-slate-200">
-                <span className="text-slate-500">মোট প্রদত্ত ফি:</span>
-                <span className="font-black text-emerald-700">
-                  ৳{selectedPatientForView.feePaid}
                 </span>
               </div>
               <div className="flex justify-between border-b pb-1.5 border-slate-200">
@@ -1649,6 +1982,7 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
                   {selectedPatientForView.nextFollowUp || "নির্ধারিত নেই"}
                 </span>
               </div>
+
               <div>
                 <span className="text-slate-500 block mb-0.5">
                   নির্দিষ্ট সমস্যা / নোট:
@@ -1656,6 +1990,43 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
                 <p className="font-medium text-slate-800 bg-white p-2 rounded-xl border border-slate-200">
                   {selectedPatientForView.problem || "কোনো বিবরণ নেই"}
                 </p>
+              </div>
+
+              {/* রোগীর আগের সকল সেশন ও পেমেন্ট হিস্ট্রি টাইমলাইন */}
+              <div className="pt-2">
+                <span className="text-slate-500 font-bold block mb-1.5 flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5" /> সেশন ও পেমেন্ট হিস্ট্রি:
+                </span>
+                <div className="max-h-24 overflow-y-auto space-y-1.5 pr-1">
+                  {(() => {
+                    const patientTxs = getPatientSessions(
+                      selectedPatientForView.name,
+                    );
+                    if (patientTxs.length === 0) {
+                      return (
+                        <p className="text-[10px] text-slate-400 italic">
+                          কোনো পূর্ববর্তী সেশন রেকর্ড নেই।
+                        </p>
+                      );
+                    }
+                    return patientTxs.map((tx: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between bg-white p-2 rounded-lg border border-slate-200 text-[10px]"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          <span className="font-bold text-slate-700">
+                            {tx.date}
+                          </span>
+                        </div>
+                        <span className="font-black text-emerald-700">
+                          ৳{tx.amount}
+                        </span>
+                      </div>
+                    ));
+                  })()}
+                </div>
               </div>
             </div>
 

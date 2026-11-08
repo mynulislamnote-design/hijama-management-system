@@ -37,3 +37,27 @@ export async function POST(request: Request) {
     );
   }
 }
+// রাক্বী ডিলিট করার API
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "আইডি দেওয়া হয়নি" }, { status: 400 });
+    }
+
+    const sqlite = (db as any).sqlite;
+    if (sqlite) {
+      const stmt = sqlite.prepare('DELETE FROM "Raqi" WHERE "id" = ?');
+      stmt.run(String(id));
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "রাক্বী সফলভাবে মুছে ফেলা হয়েছে",
+    });
+  } catch (error) {
+    return NextResponse.json({ error: "ডিলিট ব্যর্থ হয়েছে" }, { status: 500 });
+  }
+}
