@@ -538,7 +538,7 @@ export default function HijamaAdminDashboard() {
 চিকিৎসায় থাকবেন: ${patient.raqiName || "প্রধান রাক্বী"}।
 সুবিধাজনক সময়ে উপস্থিত হওয়ার অনুরোধ করা হলো।
 
-_শরঈ রুকইয়াহ ও সুন্নতি হিজামা সেন্টার_`;
+_আদ দাওয়াহ রুকইয়াহ এন্ড হিজামা সাপোর্ট_`;
 
     const clean = patient.phone.replace(/\D/g, "");
     window.open(
@@ -673,7 +673,7 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
         <body>
           <div class="receipt-box">
             <div class="header">
-              <h2>শরঈ রুকইয়াহ ও সুন্নতি হিজামা সেন্টার</h2>
+              <h2>আদ দাওয়াহ রুকইয়াহ এন্ড হিজামা সাপোর্ট</h2>
               <p>রোগী চিকিৎসা ও সেবা রসিদ</p>
             </div>
             <div class="row"><span class="label">রসিদ নং:</span><span class="val">#${p.id.slice(-6).toUpperCase()}</span></div>
@@ -776,7 +776,7 @@ _শরঈ রুকইয়াহ ও সুন্নতি হিজামা
             </div>
             <div>
               <h1 className="text-base sm:text-lg font-black tracking-tight">
-                শরঈ রুকইয়াহ ও সুন্নতি হিজামা সেন্টার
+                আদ দাওয়াহ রুকইয়াহ এন্ড হিজামা সাপোর্ট
               </h1>
               <p className="text-[11px] text-emerald-200">
                 রোগী ব্যবস্থাপনা, ফলো-আপ শিডিউল ও আয়-ব্যয় রিপোর্ট

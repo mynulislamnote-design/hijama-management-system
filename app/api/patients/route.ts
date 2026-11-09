@@ -49,11 +49,11 @@ export async function POST(request: Request) {
             : serviceType === "HIJAMA"
               ? "সুন্নতি হিজামা"
               : "রুকিয়াহ ও হিজামা উভয় সার্ভিস";
-        const welcomeMsg = `🏥 *শরঈ রুকইয়াহ ও সুন্নতি হিজামা সেন্টার*
+        const welcomeMsg = `*আদ দাওয়াহ রুকইয়াহ এন্ড হিজামা সাপোর্ট*
 
 আসসালামু আলাইকুম ${name}!
 আজ আমাদের সেন্টারে আপনার সেবা (${serviceNameBn}) সফলভাবে সম্পন্ন হয়েছে।
-🩺 চিকিৎসায় থাকবেন: ${raqiName || "প্রধান রাক্বী"}
+🩺 চিকিৎসায় ছিলেন: ${raqiName || "প্রধান রাক্বী"}
 💰 পরিশোধিত ফি: ৳${feePaid}
 📅 তারিখ: ${sessionDate}
 ${nextFollowUp ? `🔄 পরবর্তী ফলো-আপ: ${nextFollowUp}` : ""}
@@ -156,7 +156,7 @@ export async function PATCH(request: Request) {
     // ৪. রোগীকে নতুন সেশনের হোয়াটসঅ্যাপ রসিদ পাঠানো
     try {
       if (patient.phone) {
-        const updateMsg = `🏥 *শরঈ রুকইয়াহ ও সুন্নতি হিজামা সেন্টার*
+        const updateMsg = `*আদ দাওয়াহ রুকইয়াহ এন্ড হিজামা সাপোর্ট*
 
 আসসালামু আলাইকুম ${patient.name}!
 আলহামদুলিল্লাহ, আজ (${today}) সেন্টারে আপনার সেশনটি সফলভাবে সম্পন্ন হয়েছে।

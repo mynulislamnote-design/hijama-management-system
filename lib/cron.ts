@@ -2,8 +2,8 @@ import cron from "node-cron";
 import { db } from "./prisma";
 import { sendWhatsAppMessage } from "./whatsapp";
 
-export const DIRECTOR_PHONE = "8801736738334";
-export const CHAIRMAN_PHONE = "8801736738334";
+export const DIRECTOR_PHONE = "8801701094516";
+export const CHAIRMAN_PHONE = "8801722455525";
 
 // রোগভিত্তিক সকালের বিশেষ মাসনুন আমল
 function getMorningAmalMessage(patientName: string, category: string): string {
@@ -65,7 +65,7 @@ cron.schedule("0 8 * * *", async () => {
       // যদি আজকের দিনে রোগীর ফলো-আপ থাকে, তবে সেশনের তাগিদ যোগ হবে
       if (p.nextFollowUp === todayStr) {
         msg =
-          `📅 *আজকের সেশন রিমাইন্ডার*\n\nআসসালামু আলাইকুম ${p.name}!\nআজকে (${todayStr}) সেন্টারে আপনার নির্ধারিত সেশন রয়েছে। চিকিৎসায় থাকবেন: ${p.raqiName || "প্রধান রাক্বী"}। যথাসময়ে উপস্থিত থাকার অনুরোধ করা হলো।\n\n-------------------\n\n` +
+          `আসসালামু আলাইকুম ${p.name}!\nআজকে (${todayStr}) সেন্টারে আপনার নির্ধারিত সেশন রয়েছে। চিকিৎসায় থাকবেন: ${p.raqiName || "প্রধান রাক্বী"}। যথাসময়ে উপস্থিত থাকার অনুরোধ করা হলো।\n\n-------------------\n\n` +
           msg;
       }
 
@@ -94,7 +94,7 @@ cron.schedule("30 16 * * *", async () => {
       // যদি আগামীকালের দিনে রোগীর ফলো-আপ থাকে, তবে আগামীকালের রিমাইন্ডার যোগ হবে
       if (p.nextFollowUp === tomorrowStr) {
         msg =
-          `📅 *আগামীকালের সেশন রিমাইন্ডার*\n\nআসসালামু আলাইকুম ${p.name}!\nআগামীকাল (${tomorrowStr}) আমাদের সেন্টারে আপনার পরবর্তী ফলো-আপ সেশন রয়েছে। চিকিৎসায় থাকবেন: ${p.raqiName || "প্রধান রাক্বী"}। ইনশাআল্লাহ দেখা হবে।\n\n-------------------\n\n` +
+          `আসসালামু আলাইকুম ${p.name}!\nআগামীকাল (${tomorrowStr}) আমাদের সেন্টারে আপনার পরবর্তী ফলো-আপ সেশন রয়েছে। চিকিৎসায় থাকবেন: ${p.raqiName || "প্রধান রাক্বী"}। ইনশাআল্লাহ দেখা হবে।\n\n-------------------\n\n` +
           msg;
       }
 
@@ -133,7 +133,7 @@ export async function sendDailySummaryReport() {
 📉 আজকের মোট ব্যয়: ৳${totalExpense}
 💰 নিট ক্যাশ ব্যালেন্স: ৳${netBalance}
 
-_শরঈ রুকইয়াহ ও সুন্নতি হিজামা ম্যানেজমেন্ট_`;
+_আদ দাওয়াহ রুকইয়াহ এন্ড হিজামা সাপোর্ট ম্যানেজমেন্ট_`;
 
   if (DIRECTOR_PHONE) await sendWhatsAppMessage(DIRECTOR_PHONE, summaryReport);
   if (CHAIRMAN_PHONE && CHAIRMAN_PHONE !== DIRECTOR_PHONE)
