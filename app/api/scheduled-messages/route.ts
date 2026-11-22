@@ -1,9 +1,21 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/prisma";
 
+// প্রিজমা মডেল খুঁজে নেওয়ার নিরাপদ ফাংশন
+function getScheduledMessageModel() {
+  const client = db as any;
+  return client.scheduledMessage || client.ScheduledMessage || null;
+}
+
 export async function GET() {
   try {
-    const messages = await (db as any).scheduledMessage.findMany({
+    const model = getScheduledMessageModel();
+    if (!model) {
+      console.error("ScheduledMessage model not found on db client");
+      return NextResponse.json([], { status: 200 });
+    }
+
+    const messages = await model.findMany({
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json(messages || []);
@@ -25,7 +37,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const newMessage = await (db as any).scheduledMessage.create({
+    const model = getScheduledMessageModel();
+    if (!model) {
+      return NextResponse.json(
+        {
+          error: "ডাটাবেজ মডেল লোড হতে পারেনি! দয়া করে সার্ভার রিস্টার্ট করুন।",
+        },
+        { status: 500 },
+      );
+    }
+
+    const newMessage = await model.create({
       data: {
         category: String(category || "ALL"),
         timeSlot: String(timeSlot || "MORNING"),
@@ -63,7 +85,15 @@ export async function DELETE(request: Request) {
       );
     }
 
-    await (db as any).scheduledMessage.delete({
+    const model = getScheduledMessageModel();
+    if (!model) {
+      return NextResponse.json(
+        { error: "ডাটাবেজ মডেল লোড হতে পারেনি!" },
+        { status: 500 },
+      );
+    }
+
+    await model.delete({
       where: { id: String(id) },
     });
 
