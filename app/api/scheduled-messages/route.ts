@@ -1,21 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/prisma";
 
-// প্রিজমা মডেল খুঁজে নেওয়ার নিরাপদ ফাংশন
-function getScheduledMessageModel() {
-  const client = db as any;
-  return client.scheduledMessage || client.ScheduledMessage || null;
-}
-
 export async function GET() {
   try {
-    const model = getScheduledMessageModel();
-    if (!model) {
-      console.error("ScheduledMessage model not found on db client");
-      return NextResponse.json([], { status: 200 });
-    }
-
-    const messages = await model.findMany({
+    const messages = await db.scheduledMessage.findMany({
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json(messages || []);
@@ -37,17 +25,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const model = getScheduledMessageModel();
-    if (!model) {
-      return NextResponse.json(
-        {
-          error: "ডাটাবেজ মডেল লোড হতে পারেনি! দয়া করে সার্ভার রিস্টার্ট করুন।",
-        },
-        { status: 500 },
-      );
-    }
-
-    const newMessage = await model.create({
+    const newMessage = await db.scheduledMessage.create({
       data: {
         category: String(category || "ALL"),
         timeSlot: String(timeSlot || "MORNING"),
@@ -73,6 +51,43 @@ export async function POST(request: Request) {
   }
 }
 
+// মেসেজ এডিট / আপডেট করার PUT API
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json();
+    const { id, category, timeSlot, dayNumber, date, message } = body;
+
+    if (!id || !message || !String(message).trim()) {
+      return NextResponse.json(
+        { error: "আইডি এবং মেসেজ বার্তা আবশ্যক!" },
+        { status: 400 },
+      );
+    }
+
+    const updated = await db.scheduledMessage.update({
+      where: { id: String(id) },
+      data: {
+        category: String(category || "ALL"),
+        timeSlot: String(timeSlot || "MORNING"),
+        dayNumber:
+          dayNumber !== undefined && dayNumber !== null && dayNumber !== ""
+            ? Number(dayNumber)
+            : null,
+        date: date ? String(date) : null,
+        message: String(message).trim(),
+      },
+    });
+
+    return NextResponse.json({ success: true, message: updated });
+  } catch (error: any) {
+    console.error("PUT Scheduled Message Error:", error);
+    return NextResponse.json(
+      { error: error?.message || "মেসেজ আপডেট করা যায়নি" },
+      { status: 500 },
+    );
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -85,15 +100,7 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const model = getScheduledMessageModel();
-    if (!model) {
-      return NextResponse.json(
-        { error: "ডাটাবেজ মডেল লোড হতে পারেনি!" },
-        { status: 500 },
-      );
-    }
-
-    await model.delete({
+    await db.scheduledMessage.delete({
       where: { id: String(id) },
     });
 

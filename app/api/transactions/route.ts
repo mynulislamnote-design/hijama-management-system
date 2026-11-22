@@ -1,73 +1,72 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/prisma";
 
+export async function GET() {
+  try {
+    // সরাসরি MySQL ডাটাবেজ লেভেলে তারিখ ও সময় অনুযায়ী সাজানো হবে (কোনো JS ক্র্যাশ হবে না)
+    const transactions = await db.transaction.findMany({
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    });
+    return NextResponse.json(transactions || []);
+  } catch (error: any) {
+    console.error("Transaction Fetch Error:", error);
+    return NextResponse.json([], { status: 200 });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { type, category, amount, note, date } = body;
 
-    const tx = await db.transaction.create({
+    if (!amount || !type || !category) {
+      return NextResponse.json(
+        { error: "ধরন, খাত এবং টাকার পরিমাণ আবশ্যক!" },
+        { status: 400 },
+      );
+    }
+
+    const todayDate = date || new Date().toISOString().split("T")[0];
+
+    const transaction = await db.transaction.create({
       data: {
-        type: String(type || "INCOME"),
-        category: String(category || "OTHER_INCOME"),
-        amount: parseFloat(amount),
-        note: note ? String(note) : null,
-        date: String(date || new Date().toISOString().split("T")[0]),
+        type: String(type),
+        category: String(category),
+        amount: Number(amount),
+        note: note ? String(note).trim() : null,
+        date: String(todayDate),
       },
     });
-    return NextResponse.json({ success: true, tx }, { status: 201 });
+
+    return NextResponse.json({ success: true, transaction }, { status: 201 });
   } catch (error: any) {
-    console.error("Transaction API Error:", error);
+    console.error("Transaction Create Error:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed" },
+      { error: error?.message || "লেনদেন সংরক্ষণ করা যায়নি" },
       { status: 500 },
     );
   }
 }
 
-export async function GET() {
+export async function DELETE(request: Request) {
   try {
-    const [txs, patients] = await Promise.all([
-      db.transaction.findMany({ orderBy: { createdAt: "desc" } }),
-      db.patient.findMany({ orderBy: { createdAt: "desc" } }),
-    ]);
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
 
-    // রোগীর ফি-গুলোকে স্বয়ংক্রিয়ভাবে আয়ের ট্রানজেকশন হিসেবে লেজারে অন্তর্ভুক্ত করা
-    const patientFeeTransactions = (patients || [])
-      .filter((p: any) => Number(p.feePaid) > 0)
-      .map((p: any) => {
-        const serviceName =
-          p.serviceType === "RUKYAH"
-            ? "শরঈ রুকিয়াহ"
-            : p.serviceType === "HIJAMA"
-              ? "সুন্নতি হিজামা"
-              : "রুকিয়াহ + হিজামা";
+    if (!id) {
+      return NextResponse.json({ error: "আইডি আবশ্যক!" }, { status: 400 });
+    }
 
-        return {
-          id: "pf_" + p.id,
-          type: "INCOME",
-          category: "PATIENT_FEE",
-          amount: Number(p.feePaid),
-          note: `রোগীর চিকিৎসা ফি: ${p.name} (${serviceName})`,
-          date: p.sessionDate,
-          createdAt: p.createdAt || p.sessionDate,
-          isPatientFee: true,
-        };
-      });
+    await db.transaction.delete({
+      where: { id: String(id) },
+    });
 
-    // সকল লেনদেন একত্র করে তারিখ অনুযায়ী সাজানো
-    const allTransactions = [...(txs || []), ...patientFeeTransactions].sort(
-      (a: any, b: any) => {
-        return (
-          (b.date || "").localeCompare(a.date || "") ||
-          (b.createdAt || "").localeCompare(a.createdAt || "")
-        );
-      },
-    );
-
-    return NextResponse.json(allTransactions);
+    return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("Transaction Fetch Error:", error);
-    return NextResponse.json([], { status: 200 });
+    console.error("Transaction Delete Error:", error);
+    return NextResponse.json(
+      { error: error?.message || "ডিলিট করা যায়নি" },
+      { status: 500 },
+    );
   }
 }

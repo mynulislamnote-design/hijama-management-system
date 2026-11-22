@@ -7,33 +7,42 @@ generator client {
 }
 
 model Patient {
-  id           String    @id @default(uuid())
-  name         String
-  phone        String
-  problem      String
-  serviceType  String
-  feePaid      Float
-  sessionDate  String
-  nextFollowUp String?
-  createdAt    DateTime  @default(now())
+  id              String    @id @default(uuid())
+  name            String
+  phone           String
+  problem         String?
+  serviceType     String
+  feePaid         Float
+  sessionDate     String
+  nextFollowUp    String?
+  raqiName        String?
+  problemCategory String?   @default("JINN")
+  createdAt       DateTime  @default(now())
 }
 
 model Transaction {
-  id          String   @id @default(uuid())
-  type        String
-  category    String
-  amount      Float
-  note        String?
-  date        String
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  type      String
+  category  String
+  amount    Float
+  note      String?
+  date      String
+  createdAt DateTime @default(now())
+}
+
+model Raqi {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String?
+  createdAt DateTime @default(now())
 }
 
 model ScheduledMessage {
   id        String   @id @default(uuid())
-  category  String   // SIHR, JINN, AYN, HIJAMA, ALL
-  timeSlot  String   // MORNING, EVENING
-  dayNumber Int?     // ১ থেকে ৩০ দিন (অথবা নির্দিষ্ট তারিখের জন্য)
-  date      String?  // যেমন: 2026-11-25 (যদি নির্দিষ্ট তারিখে পাঠাতে চান)
+  category  String   @default("ALL")
+  timeSlot  String   @default("MORNING")
+  dayNumber Int?
+  date      String?
   message   String   @db.Text
   createdAt DateTime @default(now())
 }

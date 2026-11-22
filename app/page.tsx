@@ -36,6 +36,7 @@ import {
   FileSpreadsheet,
   Copy,
   MessageSquare,
+  Edit,
 } from "lucide-react";
 
 interface Patient {
@@ -131,14 +132,13 @@ const getProblemBadge = (cat?: string) => {
     default:
       return (
         <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold text-[10px]">
-          📌 সাধারণ
+          📌 অন্যান্য
         </span>
       );
   }
 };
 
 export default function HijamaAdminDashboard() {
-  // ১. পাসওয়ার্ড সিকিউরিটি স্টেট (Remember Me সুবিধা সহ)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [inputPassword, setInputPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
@@ -178,7 +178,6 @@ export default function HijamaAdminDashboard() {
     setInputPassword("");
   };
 
-  // মূল ড্যাশবোর্ড স্টেটসমূহ
   const [activeTab, setActiveTab] = useState<
     "PATIENTS" | "TRANSACTIONS" | "MESSAGES"
   >("PATIENTS");
@@ -192,18 +191,15 @@ export default function HijamaAdminDashboard() {
   const [scheduledMsgs, setScheduledMsgs] = useState<ScheduledMsg[]>([]);
   const [successMsg, setSuccessMsg] = useState("");
 
-  // নতুন রাক্বী পপআপ
   const [isAddRaqiOpen, setIsAddRaqiOpen] = useState(false);
   const [newRaqiName, setNewRaqiName] = useState("");
   const [newRaqiPhone, setNewRaqiPhone] = useState("");
   const [isSubmittingRaqi, setIsSubmittingRaqi] = useState(false);
 
-  // সার্চ ও ফিল্টার
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedServiceFilter, setSelectedServiceFilter] = useState("ALL");
   const [selectedProblemFilter, setSelectedProblemFilter] = useState("ALL");
 
-  // মডাল স্টেট
   const [selectedPatientForView, setSelectedPatientForView] =
     useState<Patient | null>(null);
   const [patientForAttendance, setPatientForAttendance] =
@@ -213,7 +209,6 @@ export default function HijamaAdminDashboard() {
   const [updatedProblemNote, setUpdatedProblemNote] = useState("");
   const [isUpdatingSession, setIsUpdatingSession] = useState(false);
 
-  // পেশেন্ট ফর্ম স্টেট
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [problem, setProblem] = useState("");
@@ -226,7 +221,6 @@ export default function HijamaAdminDashboard() {
   const [sessionDate, setSessionDate] = useState("");
   const [nextFollowUp, setNextFollowUp] = useState("");
 
-  // আয়-ব্যয় ফিল্টার
   const [txTimeFilter, setTxTimeFilter] = useState<
     "TODAY" | "THIS_MONTH" | "LAST_MONTH" | "ALL" | "CUSTOM"
   >("THIS_MONTH");
@@ -235,7 +229,6 @@ export default function HijamaAdminDashboard() {
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
 
-  // লেনদেন এন্ট্রি ফর্ম স্টেট (পূর্ণাঙ্গ ক্যাটাগরি সহ)
   const [txType, setTxType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [txCategory, setTxCategory] = useState("PATIENT_FEE");
   const [txAmount, setTxAmount] = useState("");
@@ -244,7 +237,7 @@ export default function HijamaAdminDashboard() {
   const [isSubmittingTx, setIsSubmittingTx] = useState(false);
   const [isSubmittingPatient, setIsSubmittingPatient] = useState(false);
 
-  // নতুন শিডিউল মেসেজ ফর্ম স্টেট
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [msgCategory, setMsgCategory] = useState("ALL");
   const [msgTimeSlot, setMsgTimeSlot] = useState("MORNING");
   const [msgDayNumber, setMsgDayNumber] = useState("");
@@ -303,7 +296,6 @@ export default function HijamaAdminDashboard() {
     }
   }, [isAuthenticated]);
 
-  // ভুল এন্ট্রি হওয়া রোগী ডিলিট ফাংশন
   const handleDeletePatient = async (id: string, patientName: string) => {
     if (
       !confirm(
@@ -329,7 +321,24 @@ export default function HijamaAdminDashboard() {
     }
   };
 
-  // শিডিউল মেসেজ সাবমিট
+  const handleStartEditScheduledMsg = (msg: ScheduledMsg) => {
+    setEditingMsgId(msg.id);
+    setMsgCategory(msg.category || "ALL");
+    setMsgTimeSlot(msg.timeSlot || "MORNING");
+    setMsgDayNumber(msg.dayNumber ? String(msg.dayNumber) : "");
+    setMsgSpecificDate(msg.date || "");
+    setMsgContent(msg.message || "");
+  };
+
+  const handleCancelEditMsg = () => {
+    setEditingMsgId(null);
+    setMsgCategory("ALL");
+    setMsgTimeSlot("MORNING");
+    setMsgDayNumber("");
+    setMsgSpecificDate("");
+    setMsgContent("");
+  };
+
   const handleScheduleMsgSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!msgContent.trim()) {
@@ -339,31 +348,39 @@ export default function HijamaAdminDashboard() {
 
     setIsSubmittingMsg(true);
     try {
-      const res = await fetch("/api/scheduled-messages", {
-        method: "POST",
+      const url = "/api/scheduled-messages";
+      const method = editingMsgId ? "PUT" : "POST";
+      const payload: any = {
+        category: msgCategory,
+        timeSlot: msgTimeSlot,
+        dayNumber: msgDayNumber ? parseInt(msgDayNumber) : null,
+        date: msgSpecificDate || null,
+        message: msgContent,
+      };
+
+      if (editingMsgId) {
+        payload.id = editingMsgId;
+      }
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: msgCategory,
-          timeSlot: msgTimeSlot,
-          dayNumber: msgDayNumber ? parseInt(msgDayNumber) : null,
-          date: msgSpecificDate || null,
-          message: msgContent,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
 
       if (res.ok) {
         setSuccessMsg(
-          "নতুন আমল / মেসেজ সফলভাবে শিডিউল তালিকায় সংরক্ষিত হয়েছে!",
+          editingMsgId
+            ? "মেসেজটি সফলভাবে আপডেট হয়েছে!"
+            : "নতুন আমল / মেসেজ সফলভাবে শিডিউল তালিকায় সংরক্ষিত হয়েছে!",
         );
-        setMsgContent("");
-        setMsgDayNumber("");
-        setMsgSpecificDate("");
+        handleCancelEditMsg();
         await fetchData();
         setTimeout(() => setSuccessMsg(""), 5000);
       } else {
-        alert(`মেসেজ সংরক্ষণ ব্যর্থ হয়েছে: ${data.error || "অজানা সমস্যা"}`);
+        alert(`ব্যর্থ হয়েছে: ${data.error || "অজানা সমস্যা"}`);
       }
     } catch (err: any) {
       alert(`সার্ভার এরর: ${err.message}`);
@@ -380,6 +397,7 @@ export default function HijamaAdminDashboard() {
       });
       if (res.ok) {
         setScheduledMsgs((prev) => prev.filter((m) => m.id !== id));
+        if (editingMsgId === id) handleCancelEditMsg();
       } else {
         alert("মুছে ফেলা সম্ভব হয়নি!");
       }
@@ -510,13 +528,13 @@ export default function HijamaAdminDashboard() {
   const filteredIncome = useMemo(() => {
     return filteredTransactions
       .filter((t) => t.type === "INCOME")
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
   }, [filteredTransactions]);
 
   const filteredExpense = useMemo(() => {
     return filteredTransactions
       .filter((t) => t.type === "EXPENSE")
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
   }, [filteredTransactions]);
 
   const filteredNetBalance = filteredIncome - filteredExpense;
@@ -525,16 +543,16 @@ export default function HijamaAdminDashboard() {
   const totalLifetimeCashBalance = useMemo(() => {
     const inc = transactions
       .filter((t) => t.type === "INCOME")
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
     const exp = transactions
       .filter((t) => t.type === "EXPENSE")
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
     return inc - exp;
   }, [transactions]);
 
   const handlePatientSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !phone || !feePaid) {
+    if (!name || !phone || feePaid === "") {
       alert("দয়া করে নাম, ফোন এবং ফি এর পরিমাণ দিন!");
       return;
     }
@@ -674,17 +692,31 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
     if (!todayStr) return 0;
     return transactions
       .filter((t) => t.date === todayStr && t.type === "INCOME")
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
   }, [transactions, todayStr]);
 
   const todayExpense = useMemo(() => {
     if (!todayStr) return 0;
     return transactions
       .filter((t) => t.date === todayStr && t.type === "EXPENSE")
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
   }, [transactions, todayStr]);
 
-  // ১-ক্লিকে মাসের রোগীদের সারাংশ ক্লিপবোর্ডে কপি
+  // রোগীর সকল সেশন ফিল্টার করে তারিখ অনুযায়ী সাজানো
+  const getPatientSessions = (patientName: string) => {
+    if (!patientName) return [];
+    const cleanName = patientName.trim().toLowerCase();
+    return transactions
+      .filter(
+        (t) =>
+          t.type === "INCOME" &&
+          t.category === "PATIENT_FEE" &&
+          t.note &&
+          t.note.toLowerCase().includes(cleanName),
+      )
+      .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  };
+
   const handleCopyMonthSummary = () => {
     if (filteredPatients.length === 0) {
       alert("কপি করার মতো কোনো রোগীর তথ্য নেই!");
@@ -704,7 +736,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
     );
   };
 
-  // এক্সেল এক্সপোর্ট
   const exportPatientsToCSV = () => {
     if (filteredPatients.length === 0) {
       alert("এক্সপোর্ট করার মতো কোনো রোগীর তথ্য নেই!");
@@ -777,7 +808,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
     document.body.removeChild(link);
   };
 
-  // রিসিট স্লিপ
   const handlePrintReceipt = (p: Patient) => {
     const printWindow = window.open("", "_blank", "width=550,height=700");
     if (!printWindow) return;
@@ -827,7 +857,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
     printWindow.document.close();
   };
 
-  // সিকিউরিটি লগইন স্ক্রিন (ব্রাউজারে পাসওয়ার্ড সেভ করার প্রপার ফরম্যাট সহ)
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans text-slate-100">
@@ -911,7 +940,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
 
             <button
               type="submit"
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-3 rounded-xl text-xs shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 active:scale-95"
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-3.5 rounded-xl text-xs shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 active:scale-95"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>ড্যাশবোর্ডে প্রবেশ করুন</span>
@@ -924,7 +953,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-16">
-      {/* হেডার */}
       <header className="bg-emerald-800 text-white shadow-md py-4 px-4 sticky top-0 z-30">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -1069,7 +1097,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
         {/* ট্যাব ১: রোগী ব্যবস্থাপনা */}
         {activeTab === "PATIENTS" && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* নতুন রোগী এন্ট্রি ফর্ম */}
             <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm h-fit space-y-4">
               <h2 className="text-sm font-black text-slate-800 flex items-center gap-2 border-b pb-2">
                 <PlusCircle className="w-4 h-4 text-emerald-600" /> নতুন রোগী
@@ -1170,7 +1197,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
 
                 <div>
                   <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                    নির্দিষ্ট সমস্যা / নোট (সংক্ষেপে):
+                    নির্দিষ্ট সমস্যা / নোট:
                   </label>
                   <input
                     type="text"
@@ -1235,7 +1262,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
               </form>
             </div>
 
-            {/* ডান পাশ: রোগী তালিকা ও অ্যাকশন */}
+            {/* ডান পাশ: রোগী তালিকা */}
             <div className="md:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col space-y-3 p-4">
               <div className="space-y-2 border-b pb-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1266,7 +1293,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {/* কপি সামারি বাটন */}
                     <button
                       type="button"
                       onClick={handleCopyMonthSummary}
@@ -1277,7 +1303,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                       <span>কপি তালিকা</span>
                     </button>
 
-                    {/* এক্সেল বাটন */}
                     <button
                       type="button"
                       onClick={exportPatientsToCSV}
@@ -1298,6 +1323,8 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                       <option value="SIHR">যাদু</option>
                       <option value="AYN">বদনজর</option>
                       <option value="PHYSICAL_HIJAMA">হিজামা</option>
+                      <option value="WASWASAH">ওয়াসওয়াসা</option>
+                      <option value="OTHER">অন্যান্য</option>
                     </select>
                   </div>
                 </div>
@@ -1428,7 +1455,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                                   <Eye className="w-3.5 h-3.5" />
                                 </button>
 
-                                {/* ভুল এন্ট্রি মুছে ফেলার বাটন */}
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1455,7 +1481,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
         {/* ট্যাব ২: আয়-ব্যয় লেজার */}
         {activeTab === "TRANSACTIONS" && (
           <div className="space-y-6">
-            {/* ফিল্টার বার */}
             <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
                 <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
@@ -1597,7 +1622,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
               </div>
             </div>
 
-            {/* সামারি কার্ডস */}
             <div className="grid grid-cols-3 gap-3 sm:gap-4">
               <div className="bg-emerald-50 border border-emerald-200 rounded-3xl p-4 flex items-center justify-between">
                 <div>
@@ -1642,7 +1666,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
               </div>
             </div>
 
-            {/* লেনদেন এন্ট্রি ও টেবিল (আগের পূর্ণ ড্রপডাউন মেনু সহ) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm h-fit space-y-4">
                 <h2 className="text-sm font-black text-slate-800 flex items-center gap-2 border-b pb-2">
@@ -1676,7 +1699,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                     </button>
                   </div>
 
-                  {/* পূর্বের হুবহু ড্রপডাউন মেনু */}
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1">
                       {txType === "INCOME" ? "আয়ের খাত:" : "ব্যয়ের খাত:"}
@@ -1844,12 +1866,24 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
         {/* ট্যাব ৩: আমল ও মেসেজ শিডিউলার */}
         {activeTab === "MESSAGES" && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* নতুন শিডিউল মেসেজ ফর্ম */}
             <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm h-fit space-y-4">
-              <h2 className="text-sm font-black text-slate-800 flex items-center gap-2 border-b pb-2">
-                <MessageSquare className="w-4 h-4 text-emerald-600" /> নতুন
-                মেসেজ শিডিউল করুন
-              </h2>
+              <div className="flex justify-between items-center border-b pb-2">
+                <h2 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-emerald-600" />
+                  {editingMsgId
+                    ? "মেসেজ এডিট / সংশোধন করুন"
+                    : "নতুন মেসেজ শিডিউল করুন"}
+                </h2>
+                {editingMsgId && (
+                  <button
+                    type="button"
+                    onClick={handleCancelEditMsg}
+                    className="text-[10px] text-rose-600 hover:underline font-bold"
+                  >
+                    বাতিল
+                  </button>
+                )}
+              </div>
 
               <form onSubmit={handleScheduleMsgSubmit} className="space-y-3">
                 <div>
@@ -1861,11 +1895,15 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                     onChange={(e) => setMsgCategory(e.target.value)}
                     className="w-full text-xs font-bold p-3 rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none"
                   >
-                    <option value="ALL">সকল রোগী (সকলের জন্য)</option>
-                    <option value="JINN">👿 শুধু জ্বিনের রোগী</option>
-                    <option value="SIHR">🪄 শুধু যাদুর রোগী</option>
-                    <option value="AYN">👁️ শুধু বদনজরের রোগী</option>
-                    <option value="PHYSICAL_HIJAMA">🩸 শুধু হিজামা রোগী</option>
+                    <option value="ALL">সকল রোগী (সকলের জন্য প্রযোজ্য)</option>
+                    <option value="JINN">👿 শুধু জ্বিনের রোগী (Jinn)</option>
+                    <option value="SIHR">🪄 শুধু যাদুর রোগী (Sihr)</option>
+                    <option value="AYN">👁️ শুধু বদনজর / হাসাদ (Ayn)</option>
+                    <option value="PHYSICAL_HIJAMA">
+                      🩸 শুধু শারীরিক সমস্যা / হিজামা
+                    </option>
+                    <option value="WASWASAH">🧠 শুধু অতিরিক্ত ওয়াসওয়াসা</option>
+                    <option value="OTHER">📌 অন্যান্য / সাধারণ রোগী</option>
                   </select>
                 </div>
 
@@ -1932,19 +1970,26 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                 <button
                   type="submit"
                   disabled={isSubmittingMsg}
-                  className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold py-3.5 rounded-2xl text-xs shadow-md transition-all flex items-center justify-center gap-2 active:scale-95"
+                  className={`w-full text-white font-extrabold py-3.5 rounded-2xl text-xs shadow-md transition-all flex items-center justify-center gap-2 active:scale-95 ${
+                    editingMsgId
+                      ? "bg-blue-600 hover:bg-blue-700"
+                      : "bg-emerald-700 hover:bg-emerald-800"
+                  }`}
                 >
                   {isSubmittingMsg ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : editingMsgId ? (
+                    <Edit className="w-4 h-4" />
                   ) : (
                     <PlusCircle className="w-4 h-4" />
                   )}
-                  <span>মেসেজ সংরক্ষণ করুন</span>
+                  <span>
+                    {editingMsgId ? "আপডেট সংরক্ষণ করুন" : "মেসেজ সংরক্ষণ করুন"}
+                  </span>
                 </button>
               </form>
             </div>
 
-            {/* সংরক্ষিত মেসেজ তালিকা */}
             <div className="md:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col p-4 space-y-3">
               <div className="border-b pb-2 flex justify-between items-center">
                 <h3 className="text-sm font-black text-slate-800">
@@ -1965,7 +2010,11 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                   scheduledMsgs.map((m) => (
                     <div
                       key={m.id}
-                      className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-2 relative"
+                      className={`p-3.5 rounded-2xl border transition-all space-y-2 relative ${
+                        editingMsgId === m.id
+                          ? "border-blue-400 bg-blue-50/40 ring-2 ring-blue-300"
+                          : "border-slate-200 bg-slate-50/70"
+                      }`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-1.5">
                         <div className="flex items-center gap-1.5">
@@ -1995,14 +2044,25 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                           )}
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteScheduledMsg(m.id)}
-                          className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
-                          title="মুছে ফেলুন"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditScheduledMsg(m)}
+                            className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="এডিট / সংশোধন করুন"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteScheduledMsg(m.id)}
+                            className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+                            title="মুছে ফেলুন"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
 
                       <p className="text-xs text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 whitespace-pre-wrap font-sans">
@@ -2144,7 +2204,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
         </div>
       )}
 
-      {/* বিস্তারিত ভিউ মডাল */}
+      {/* রোগীর বিস্তারিত প্রোফাইল মডাল (১ম, ২য়, ৩য় সেশন আলাদা তারিখ ও ফিসহ স্পষ্ট তালিকা) */}
       {selectedPatientForView && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl border border-slate-100">
@@ -2180,14 +2240,75 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                 </div>
               </div>
               <div className="flex justify-between border-b pb-1">
+                <span>সর্বশেষ সেশন:</span>
+                <span className="font-bold">
+                  {selectedPatientForView.sessionDate}
+                </span>
+              </div>
+              <div className="flex justify-between border-b pb-1">
                 <span>পরবর্তী ফলো-আপ:</span>
                 <span className="font-bold text-amber-800">
-                  {selectedPatientForView.nextFollowUp || "নেই"}
+                  {selectedPatientForView.nextFollowUp || "নির্ধারিত নেই"}
+                </span>
+              </div>
+              <div className="flex justify-between border-b pb-1">
+                <span>মোট পরিশোধিত ফি:</span>
+                <span className="font-black text-emerald-800">
+                  ৳{selectedPatientForView.feePaid}
                 </span>
               </div>
               <p className="p-2 bg-white rounded-xl border border-slate-200 mt-2">
                 {selectedPatientForView.problem || "কোনো নোট নেই"}
               </p>
+
+              {/* রোগীর সকল সেশনের তারিখভিত্তিক আলাদা আলাদা তালিকা */}
+              <div className="pt-2">
+                <span className="text-slate-500 font-bold block mb-1.5 flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5" /> সেশন ও ফি বিবরণী:
+                </span>
+                <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                  {(() => {
+                    const patientTxs = getPatientSessions(
+                      selectedPatientForView.name,
+                    );
+                    if (patientTxs.length === 0) {
+                      return (
+                        <div className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200 text-xs shadow-xs">
+                          <div>
+                            <span className="font-bold text-slate-800 block">
+                              ১ম সেশন (রেজিস্ট্রেশন)
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              তারিখ: {selectedPatientForView.sessionDate}
+                            </span>
+                          </div>
+                          <span className="font-black text-emerald-700">
+                            ৳{selectedPatientForView.feePaid}
+                          </span>
+                        </div>
+                      );
+                    }
+                    return patientTxs.map((tx: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200 text-xs shadow-xs"
+                      >
+                        <div>
+                          <span className="font-bold text-slate-800 block">
+                            {tx.note || `সেশন ${idx + 1}`}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            তারিখ: {tx.date}
+                          </span>
+                        </div>
+                        <span className="font-black text-emerald-700 text-sm">
+                          ৳{tx.amount}
+                        </span>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
