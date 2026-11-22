@@ -34,6 +34,8 @@ import {
   Printer,
   Download,
   FileSpreadsheet,
+  Copy,
+  MessageSquare,
 } from "lucide-react";
 
 interface Patient {
@@ -63,6 +65,15 @@ interface Raqi {
   id: string;
   name: string;
   phone?: string;
+}
+
+interface ScheduledMsg {
+  id: string;
+  category: string;
+  timeSlot: string;
+  dayNumber?: number;
+  date?: string;
+  message: string;
 }
 
 const getCategoryNameBn = (cat: string) => {
@@ -126,15 +137,17 @@ const getProblemBadge = (cat?: string) => {
 };
 
 export default function HijamaAdminDashboard() {
-  // ১. মাস্টার পাসওয়ার্ড সিকিউরিটি স্টেট
+  // ১. পাসওয়ার্ড সিকিউরিটি স্টেট (Remember Me সুবিধা সহ)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [inputPassword, setInputPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [passwordError, setPasswordError] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    const authStatus = sessionStorage.getItem("hijama_admin_auth");
-    if (authStatus === "true") {
+    const localAuth = localStorage.getItem("hijama_admin_auth");
+    const sessionAuth = sessionStorage.getItem("hijama_admin_auth");
+    if (localAuth === "true" || sessionAuth === "true") {
       setIsAuthenticated(true);
     }
   }, []);
@@ -142,10 +155,14 @@ export default function HijamaAdminDashboard() {
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const correctPassword =
-      process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "Addawah@food";
+      process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "Addawah@2026";
 
     if (inputPassword.trim() === correctPassword.trim()) {
-      sessionStorage.setItem("hijama_admin_auth", "true");
+      if (rememberMe) {
+        localStorage.setItem("hijama_admin_auth", "true");
+      } else {
+        sessionStorage.setItem("hijama_admin_auth", "true");
+      }
       setIsAuthenticated(true);
       setPasswordError(false);
     } else {
@@ -154,15 +171,16 @@ export default function HijamaAdminDashboard() {
   };
 
   const handleAdminLogout = () => {
+    localStorage.removeItem("hijama_admin_auth");
     sessionStorage.removeItem("hijama_admin_auth");
     setIsAuthenticated(false);
     setInputPassword("");
   };
 
   // মূল ড্যাশবোর্ড স্টেটসমূহ
-  const [activeTab, setActiveTab] = useState<"PATIENTS" | "TRANSACTIONS">(
-    "PATIENTS",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "PATIENTS" | "TRANSACTIONS" | "MESSAGES"
+  >("PATIENTS");
   const [patientViewMode, setPatientViewMode] = useState<
     "ALL" | "TODAY_FOLLOWUP"
   >("ALL");
@@ -170,6 +188,7 @@ export default function HijamaAdminDashboard() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [raqis, setRaqis] = useState<Raqi[]>([]);
+  const [scheduledMsgs, setScheduledMsgs] = useState<ScheduledMsg[]>([]);
   const [successMsg, setSuccessMsg] = useState("");
 
   // নতুন রাক্বী পপআপ
@@ -223,6 +242,14 @@ export default function HijamaAdminDashboard() {
   const [isSubmittingTx, setIsSubmittingTx] = useState(false);
   const [isSubmittingPatient, setIsSubmittingPatient] = useState(false);
 
+  // নতুন শিডিউল মেসেজ ফর্ম স্টেট
+  const [msgCategory, setMsgCategory] = useState("ALL");
+  const [msgTimeSlot, setMsgTimeSlot] = useState("MORNING");
+  const [msgDayNumber, setMsgDayNumber] = useState("");
+  const [msgSpecificDate, setMsgSpecificDate] = useState("");
+  const [msgContent, setMsgContent] = useState("");
+  const [isSubmittingMsg, setIsSubmittingMsg] = useState(false);
+
   useEffect(() => {
     const today = new Date().toISOString().split("T")[0];
     setTodayStr(today);
@@ -243,17 +270,20 @@ export default function HijamaAdminDashboard() {
 
   const fetchData = async () => {
     try {
-      const [pRes, tRes, rRes] = await Promise.all([
+      const [pRes, tRes, rRes, mRes] = await Promise.all([
         fetch("/api/patients"),
         fetch("/api/transactions"),
         fetch("/api/raqis"),
+        fetch("/api/scheduled-messages"),
       ]);
       const pData = await pRes.json();
       const tData = await tRes.json();
       const rData = await rRes.json();
+      const mData = await mRes.json();
 
       if (Array.isArray(pData)) setPatients(pData);
       if (Array.isArray(tData)) setTransactions(tData);
+      if (Array.isArray(mData)) setScheduledMsgs(mData);
       if (Array.isArray(rData)) {
         setRaqis(rData);
         if (rData.length > 0 && !raqiName) {
@@ -270,6 +300,82 @@ export default function HijamaAdminDashboard() {
       fetchData();
     }
   }, [isAuthenticated]);
+
+  // ভুল এন্ট্রি হওয়া রোগী ডিলিট ফাংশন
+  const handleDeletePatient = async (id: string, patientName: string) => {
+    if (
+      !confirm(
+        `⚠️ সতর্কবার্তা!\nআপনি কি নিশ্চিত যে "${patientName}"-এর তথ্য স্থায়ীভাবে মুছে ফেলতে চান?`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/patients?id=${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setPatients((prev) => prev.filter((p) => p.id !== id));
+        setSuccessMsg(
+          `রোগী "${patientName}" সফলভাবে তালিকা থেকে মুছে ফেলা হয়েছে।`,
+        );
+        setTimeout(() => setSuccessMsg(""), 5000);
+      } else {
+        alert("ডিলিট করা সম্ভব হয়নি!");
+      }
+    } catch (err) {
+      alert("সার্ভার এরর");
+    }
+  };
+
+  // শিডিউল মেসেজ সাবমিট ও ডিলিট
+  const handleScheduleMsgSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!msgContent.trim()) return;
+
+    setIsSubmittingMsg(true);
+    try {
+      const res = await fetch("/api/scheduled-messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: msgCategory,
+          timeSlot: msgTimeSlot,
+          dayNumber: msgDayNumber ? parseInt(msgDayNumber) : null,
+          date: msgSpecificDate || null,
+          message: msgContent,
+        }),
+      });
+
+      if (res.ok) {
+        setSuccessMsg(
+          "নতুন আমল / মেসেজ সফলভাবে শিডিউল তালিকায় সংরক্ষিত হয়েছে!",
+        );
+        setMsgContent("");
+        setMsgDayNumber("");
+        setMsgSpecificDate("");
+        await fetchData();
+        setTimeout(() => setSuccessMsg(""), 5000);
+      }
+    } catch (err) {
+      alert("মেসেজ সংরক্ষণ ব্যর্থ হয়েছে");
+    } finally {
+      setIsSubmittingMsg(false);
+    }
+  };
+
+  const handleDeleteScheduledMsg = async (id: string) => {
+    if (!confirm("আপনি কি এই শিডিউল মেসেজটি ডিলিট করতে চান?")) return;
+    try {
+      const res = await fetch(`/api/scheduled-messages?id=${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setScheduledMsgs((prev) => prev.filter((m) => m.id !== id));
+      }
+    } catch (err) {
+      alert("সার্ভার এরর");
+    }
+  };
 
   const handleAddRaqiSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -290,8 +396,6 @@ export default function HijamaAdminDashboard() {
         setNewRaqiPhone("");
         setIsAddRaqiOpen(false);
         alert("নতুন রাক্বী সফলভাবে তালিকায় যুক্ত হয়েছে!");
-      } else {
-        alert("রাক্বী যোগ করা সম্ভব হয়নি!");
       }
     } catch (err) {
       alert("সার্ভার এরর");
@@ -307,12 +411,8 @@ export default function HijamaAdminDashboard() {
       const res = await fetch(`/api/raqis?id=${id}`, { method: "DELETE" });
       if (res.ok) {
         setRaqis((prev) => prev.filter((r) => r.id !== id));
-        if (raqiName === raqiTitle) {
-          setRaqiName("");
-        }
+        if (raqiName === raqiTitle) setRaqiName("");
         alert("রাক্বী সফলভাবে মুছে ফেলা হয়েছে!");
-      } else {
-        alert("ডিলিট করা যায়নি!");
       }
     } catch (err) {
       alert("সার্ভার এরর");
@@ -410,6 +510,17 @@ export default function HijamaAdminDashboard() {
 
   const filteredNetBalance = filteredIncome - filteredExpense;
 
+  // মোট অল-টাইম নিট ক্যাশ ব্যালেন্স
+  const totalLifetimeCashBalance = useMemo(() => {
+    const inc = transactions
+      .filter((t) => t.type === "INCOME")
+      .reduce((sum, t) => sum + t.amount, 0);
+    const exp = transactions
+      .filter((t) => t.type === "EXPENSE")
+      .reduce((sum, t) => sum + t.amount, 0);
+    return inc - exp;
+  }, [transactions]);
+
   const handlePatientSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !phone || !feePaid) {
@@ -476,8 +587,6 @@ export default function HijamaAdminDashboard() {
         }),
       });
 
-      const data = await res.json();
-
       if (res.ok) {
         setSuccessMsg(
           `আলহামদুলিল্লাহ! ${patientForAttendance.name}-এর সেশন সম্পন্ন হয়েছে ও ফি লেজারে যুক্ত হয়েছে।`,
@@ -488,8 +597,6 @@ export default function HijamaAdminDashboard() {
         setUpdatedProblemNote("");
         await fetchData();
         setTimeout(() => setSuccessMsg(""), 6000);
-      } else {
-        alert(`সেশন আপডেট হয়নি! কারণ: ${data.error || "অজানা সমস্যা"}`);
       }
     } catch (err) {
       alert(`সার্ভার এরর: ${err}`);
@@ -566,16 +673,27 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
       .reduce((sum, t) => sum + t.amount, 0);
   }, [transactions, todayStr]);
 
-  const getPatientSessions = (patientName: string) => {
-    return transactions.filter(
-      (t) =>
-        t.type === "INCOME" &&
-        t.category === "PATIENT_FEE" &&
-        t.note?.includes(patientName),
+  // ১-ক্লিকে মাসের রোগীদের সারাংশ ক্লিপবোর্ডে কপি
+  const handleCopyMonthSummary = () => {
+    if (filteredPatients.length === 0) {
+      alert("কপি করার মতো কোনো রোগীর তথ্য নেই!");
+      return;
+    }
+    const lines = filteredPatients.map(
+      (p, i) =>
+        `${i + 1}. ${p.name} | ${p.phone} | ${p.problemCategory || "JINN"} | ফি: ৳${p.feePaid} | সেশন: ${p.sessionDate}`,
+    );
+    const summaryText =
+      `📋 *আদ দাওয়াহ রোগী তালিকা সারাংশ*\nমোট রোগী: ${filteredPatients.length} জন\n\n` +
+      lines.join("\n");
+
+    navigator.clipboard.writeText(summaryText);
+    alert(
+      "✅ সফলভাবে ক্লিপবোর্ডে কপি হয়েছে! আপনি এখন যেকোনো জায়গায় পেস্ট করতে পারবেন।",
     );
   };
 
-  // ২. এক্সেল (CSV) এক্সপোর্ট ফাংশনসমূহ (বাংলা সাপোর্ট সহ)
+  // এক্সেল এক্সপোর্ট
   const exportPatientsToCSV = () => {
     if (filteredPatients.length === 0) {
       alert("এক্সপোর্ট করার মতো কোনো রোগীর তথ্য নেই!");
@@ -648,7 +766,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
     document.body.removeChild(link);
   };
 
-  // ৩. ১-ক্লিক প্রিন্ট উপযোগী মানি রিসিট স্লিপ
+  // রিসিট স্লিপ
   const handlePrintReceipt = (p: Patient) => {
     const printWindow = window.open("", "_blank", "width=550,height=700");
     if (!printWindow) return;
@@ -698,7 +816,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
     printWindow.document.close();
   };
 
-  // ১. যদি পাসওয়ার্ড না দিয়ে থাকে তবে সিকিউরিটি লক স্ক্রিন শো করবে
+  // সিকিউরিটি লগইন স্ক্রিন (ব্রাউজারে পাসওয়ার্ড সেভ করার প্রপার ফরম্যাট সহ)
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans text-slate-100">
@@ -716,6 +834,16 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
           </div>
 
           <form onSubmit={handleAdminLogin} className="space-y-4">
+            {/* ব্রাউজার যাতে বুঝতে পারে এটি একটি অ্যাডমিন অ্যাকাউন্ট */}
+            <input
+              type="text"
+              name="username"
+              autoComplete="username"
+              value="admin"
+              readOnly
+              className="hidden"
+            />
+
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-300 block">
                 মাস্টার সিক্রেট পাসওয়ার্ড দিন:
@@ -723,6 +851,8 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
+                  name="password"
+                  autoComplete="current-password"
                   placeholder="পাসওয়ার্ড লিখুন..."
                   value={inputPassword}
                   onChange={(e) => {
@@ -744,6 +874,24 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                   )}
                 </button>
               </div>
+
+              {/* পাসওয়ার্ড মনে রাখার অপশন */}
+              <div className="flex items-center gap-2 pt-1.5">
+                <input
+                  type="checkbox"
+                  id="rememberMe"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 bg-slate-950 border-slate-600 cursor-pointer"
+                />
+                <label
+                  htmlFor="rememberMe"
+                  className="text-xs font-bold text-slate-400 cursor-pointer select-none"
+                >
+                  ব্রাউজারে পাসওয়ার্ড মনে রাখুন (Remember Me)
+                </label>
+              </div>
+
               {passwordError && (
                 <span className="text-[11px] font-bold text-rose-400 flex items-center gap-1 mt-1">
                   <ShieldAlert className="w-3.5 h-3.5" /> ভুল পাসওয়ার্ড! আবার
@@ -767,7 +915,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-16">
-      {/* হেডার (লক/লগআউট বাটন সহ) */}
+      {/* হেডার */}
       <header className="bg-emerald-800 text-white shadow-md py-4 px-4 sticky top-0 z-30">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -861,15 +1009,16 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
 
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
             <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-              <TrendingDown className="w-3.5 h-3.5 text-rose-500" /> আজকের ব্যয়
+              <DollarSign className="w-3.5 h-3.5 text-blue-600" /> মোট নিট ক্যাশ
+              ব্যালেন্স
             </span>
-            <div className="text-xl sm:text-2xl font-black text-rose-600">
-              ৳{todayExpense}
+            <div className="text-xl sm:text-2xl font-black text-blue-700">
+              ৳{totalLifetimeCashBalance}
             </div>
           </div>
         </div>
 
-        {/* প্রধান ট্যাব সুইচ */}
+        {/* প্রধান ৩টি ট্যাব সুইচ */}
         <div className="flex gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs">
           <button
             type="button"
@@ -880,8 +1029,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                 : "text-slate-600 hover:bg-slate-50"
             }`}
           >
-            <Users className="w-4 h-4" /> রোগী এন্ট্রি ও তালিকা (
-            {patients.length})
+            <Users className="w-4 h-4" /> রোগী ব্যবস্থাপনা ({patients.length})
           </button>
           <button
             type="button"
@@ -892,12 +1040,24 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                 : "text-slate-600 hover:bg-slate-50"
             }`}
           >
-            <DollarSign className="w-4 h-4" /> আয়-ব্যয় লেজার ও রিপোর্ট (
+            <DollarSign className="w-4 h-4" /> আয়-ব্যয় লেজার (
             {transactions.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("MESSAGES")}
+            className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 ${
+              activeTab === "MESSAGES"
+                ? "bg-emerald-700 text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" /> আমল ও মেসেজ শিডিউলার (
+            {scheduledMsgs.length})
           </button>
         </div>
 
-        {/* ট্যাব ১: রোগী এন্ট্রি ও সার্চ ফিল্টার */}
+        {/* ট্যাব ১: রোগী ব্যবস্থাপনা */}
         {activeTab === "PATIENTS" && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* নতুন রোগী এন্ট্রি ফর্ম */}
@@ -936,7 +1096,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                   />
                 </div>
 
-                {/* রাক্বী ড্রপডাউন ও নতুন রাক্বী বাটন */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[11px] font-bold text-slate-600">
@@ -1067,7 +1226,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
               </form>
             </div>
 
-            {/* ডান পাশ: লাইভ সার্চ, ফলো-আপ ভিউ, এক্সেল ডাউনলোড ও টেবিল */}
+            {/* ডান পাশ: রোগী তালিকা ও অ্যাকশন */}
             <div className="md:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col space-y-3 p-4">
               <div className="space-y-2 border-b pb-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1098,18 +1257,28 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {/* এক্সেল ডাউনলোড বাটন */}
+                    {/* কপি সামারি বাটন */}
+                    <button
+                      type="button"
+                      onClick={handleCopyMonthSummary}
+                      className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-300 rounded-xl text-xs font-bold flex items-center gap-1 transition-all"
+                      title="রোগীদের সংক্ষিপ্ত তালিকা কপি করুন"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-blue-600" />
+                      <span>কপি তালিকা</span>
+                    </button>
+
+                    {/* এক্সেল বাটন */}
                     <button
                       type="button"
                       onClick={exportPatientsToCSV}
                       className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1 transition-all"
-                      title="রোগীদের তালিকা এক্সেলে ডাউনলোড করুন"
+                      title="এক্সেল ডাউনলোড করুন"
                     >
                       <Download className="w-3.5 h-3.5 text-emerald-600" />
                       <span>এক্সেল</span>
                     </button>
 
-                    <Filter className="w-3.5 h-3.5 text-slate-400" />
                     <select
                       value={selectedProblemFilter}
                       onChange={(e) => setSelectedProblemFilter(e.target.value)}
@@ -1120,17 +1289,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                       <option value="SIHR">যাদু</option>
                       <option value="AYN">বদনজর</option>
                       <option value="PHYSICAL_HIJAMA">হিজামা</option>
-                    </select>
-
-                    <select
-                      value={selectedServiceFilter}
-                      onChange={(e) => setSelectedServiceFilter(e.target.value)}
-                      className="text-xs font-bold p-1.5 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none"
-                    >
-                      <option value="ALL">সব সার্ভিস</option>
-                      <option value="RUKYAH">রুকিয়াহ</option>
-                      <option value="HIJAMA">হিজামা</option>
-                      <option value="BOTH">উভয়</option>
                     </select>
                   </div>
                 </div>
@@ -1166,9 +1324,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                           colSpan={5}
                           className="text-center p-8 text-slate-400"
                         >
-                          {patientViewMode === "TODAY_FOLLOWUP"
-                            ? "আজকে কোনো রোগীর ফলো-আপ নির্ধারিত নেই।"
-                            : "কোনো রোগীর তথ্য পাওয়া যায়নি।"}
+                          কোনো রোগীর তথ্য পাওয়া যায়নি।
                         </td>
                       </tr>
                     ) : (
@@ -1245,7 +1401,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                                   </button>
                                 )}
 
-                                {/* প্রিন্ট মানি রিসিট বাটন */}
                                 <button
                                   type="button"
                                   onClick={() => handlePrintReceipt(p)}
@@ -1259,9 +1414,21 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                                   type="button"
                                   onClick={() => setSelectedPatientForView(p)}
                                   className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all"
-                                  title="রোগীর বিস্তারিত হিস্ট্রি দেখুন"
+                                  title="বিস্তারিত দেখুন"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
+                                </button>
+
+                                {/* ভুল এন্ট্রি মুছে ফেলার বাটন */}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleDeletePatient(p.id, p.name)
+                                  }
+                                  className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-all"
+                                  title="ভুল এন্ট্রি মুছে ফেলুন"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             </td>
@@ -1276,10 +1443,10 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
           </div>
         )}
 
-        {/* ট্যাব ২: আয়-ব্যয় লেজার ও রিপোর্ট */}
+        {/* ট্যাব ২: আয়-ব্যয় লেজার */}
         {activeTab === "TRANSACTIONS" && (
           <div className="space-y-6">
-            {/* টাইম ও ক্যাটাগরি ফিল্টার বার */}
+            {/* ফিল্টার বার */}
             <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
                 <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
@@ -1346,88 +1513,44 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                 </div>
               </div>
 
-              {txTimeFilter === "CUSTOM" && (
-                <div className="bg-amber-50/60 p-3 rounded-2xl border border-amber-200 flex flex-wrap items-center gap-3 animate-in fade-in">
-                  <div className="flex items-center gap-2 text-xs font-bold text-amber-950">
-                    <span>শুরুর তারিখ:</span>
-                    <input
-                      type="date"
-                      value={customStartDate}
-                      onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="p-1.5 rounded-xl border border-amber-300 bg-white"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-bold text-amber-950">
-                    <span>শেষের তারিখ:</span>
-                    <input
-                      type="date"
-                      value={customEndDate}
-                      onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="p-1.5 rounded-xl border border-amber-300 bg-white"
-                    />
-                  </div>
-                </div>
-              )}
-
               <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-slate-500">
-                      ধরন:
-                    </span>
-                    <select
-                      value={txTypeFilter}
-                      onChange={(e) => setTxTypeFilter(e.target.value)}
-                      className="text-xs font-bold p-1.5 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none"
-                    >
-                      <option value="ALL">আয় ও ব্যয় উভয়ই</option>
-                      <option value="INCOME">শুধু আয় (+)</option>
-                      <option value="EXPENSE">শুধু ব্যয় (-)</option>
-                    </select>
-                  </div>
+                  <select
+                    value={txTypeFilter}
+                    onChange={(e) => setTxTypeFilter(e.target.value)}
+                    className="text-xs font-bold p-1.5 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none"
+                  >
+                    <option value="ALL">আয় ও ব্যয় উভয়ই</option>
+                    <option value="INCOME">শুধু আয় (+)</option>
+                    <option value="EXPENSE">শুধু ব্যয় (-)</option>
+                  </select>
 
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-slate-500">
-                      খাত:
-                    </span>
-                    <select
-                      value={txCategoryFilter}
-                      onChange={(e) => setTxCategoryFilter(e.target.value)}
-                      className="text-xs font-bold p-1.5 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none"
-                    >
-                      <option value="ALL">সকল খাত</option>
-                      <optgroup label="আয়ের খাতসমূহ">
-                        <option value="PATIENT_FEE">রোগীর ফি</option>
-                        <option value="PRODUCTS_SALE">
-                          তেল/মধু/সামগ্রী বিক্রয়
-                        </option>
-                        <option value="DONATION_GIFT">হাদিয়া / অনুদান</option>
-                        <option value="OTHER_INCOME">অন্যান্য আয়</option>
-                      </optgroup>
-                      <optgroup label="ব্যয়ের খাতসমূহ">
-                        <option value="RENT">সেন্টার ভাড়া</option>
-                        <option value="MEDICINE_CUPS">
-                          কাপ ও সার্জিক্যাল সামগ্রী
-                        </option>
-                        <option value="PRODUCTS_PURCHASE">
-                          তেল/মধু স্টক ক্রয়
-                        </option>
-                        <option value="UTILITY">বিদ্যুৎ ও নেট বিল</option>
-                        <option value="STAFF_SALARY">স্টাফ সম্মানী</option>
-                        <option value="CONVEYANCE">যাতায়াত খরচ</option>
-                        <option value="REFRESHMENT">মেহমানদারি ও নাস্তা</option>
-                        <option value="OTHER_EXPENSE">অন্যান্য ব্যয়</option>
-                      </optgroup>
-                    </select>
-                  </div>
+                  <select
+                    value={txCategoryFilter}
+                    onChange={(e) => setTxCategoryFilter(e.target.value)}
+                    className="text-xs font-bold p-1.5 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none"
+                  >
+                    <option value="ALL">সকল খাত</option>
+                    <optgroup label="আয়ের খাতসমূহ">
+                      <option value="PATIENT_FEE">রোগীর ফি</option>
+                      <option value="PRODUCTS_SALE">তেল/মধু বিক্রয়</option>
+                      <option value="DONATION_GIFT">হাদিয়া / অনুদান</option>
+                      <option value="OTHER_INCOME">অন্যান্য আয়</option>
+                    </optgroup>
+                    <optgroup label="ব্যয়ের খাতসমূহ">
+                      <option value="RENT">সেন্টার ভাড়া</option>
+                      <option value="MEDICINE_CUPS">হিজামা সামগ্রী</option>
+                      <option value="STAFF_SALARY">স্টাফ সম্মানী</option>
+                      <option value="UTILITY">বিদ্যুৎ ও নেট বিল</option>
+                      <option value="OTHER_EXPENSE">অন্যান্য ব্যয়</option>
+                    </optgroup>
+                  </select>
                 </div>
 
-                {/* লেজার এক্সেল ডাউনলোড বাটন */}
                 <button
                   type="button"
                   onClick={exportTransactionsToCSV}
                   className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
-                  title="লেজার রিপোর্ট এক্সেলে ডাউনলোড করুন"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   <span>লেজার এক্সেল ডাউনলোড</span>
@@ -1435,12 +1558,12 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
               </div>
             </div>
 
-            {/* ফিল্টার করা সময়ের সামারি কার্ডস */}
+            {/* সামারি কার্ডস */}
             <div className="grid grid-cols-3 gap-3 sm:gap-4">
               <div className="bg-emerald-50 border border-emerald-200 rounded-3xl p-4 flex items-center justify-between">
                 <div>
                   <span className="text-[11px] font-bold text-emerald-800 block">
-                    নির্বাচিত সময়ের মোট আয়
+                    নির্বাচিত সময়ের আয়
                   </span>
                   <span className="text-xl sm:text-2xl font-black text-emerald-950 mt-1 block">
                     ৳{filteredIncome}
@@ -1454,7 +1577,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
               <div className="bg-rose-50 border border-rose-200 rounded-3xl p-4 flex items-center justify-between">
                 <div>
                   <span className="text-[11px] font-bold text-rose-800 block">
-                    নির্বাচিত সময়ের মোট ব্যয়
+                    নির্বাচিত সময়ের ব্যয়
                   </span>
                   <span className="text-xl sm:text-2xl font-black text-rose-950 mt-1 block">
                     ৳{filteredExpense}
@@ -1465,39 +1588,23 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                 </div>
               </div>
 
-              <div
-                className={`rounded-3xl p-4 border flex items-center justify-between ${
-                  filteredNetBalance >= 0
-                    ? "bg-blue-50 border-blue-200"
-                    : "bg-amber-50 border-amber-200"
-                }`}
-              >
+              <div className="bg-blue-50 border border-blue-200 rounded-3xl p-4 flex items-center justify-between">
                 <div>
-                  <span className="text-[11px] font-bold text-slate-700 block">
-                    নিট ব্যালেন্স / উদ্বৃত্ত
+                  <span className="text-[11px] font-bold text-blue-800 block">
+                    নির্বাচিত সময়ের নিট লাভ
                   </span>
-                  <span
-                    className={`text-xl sm:text-2xl font-black mt-1 block ${
-                      filteredNetBalance >= 0
-                        ? "text-blue-900"
-                        : "text-amber-900"
-                    }`}
-                  >
+                  <span className="text-xl sm:text-2xl font-black text-blue-900 mt-1 block">
                     ৳{filteredNetBalance}
                   </span>
                 </div>
-                <div
-                  className={`w-10 h-10 rounded-2xl text-white flex items-center justify-center ${
-                    filteredNetBalance >= 0 ? "bg-blue-600" : "bg-amber-600"
-                  }`}
-                >
+                <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center">
                   <DollarSign className="w-5 h-5" />
                 </div>
               </div>
             </div>
 
+            {/* লেনদেন এন্ট্রি ও টেবিল */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* নতুন লেনদেন ফর্ম */}
               <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm h-fit space-y-4">
                 <h2 className="text-sm font-black text-slate-800 flex items-center gap-2 border-b pb-2">
                   <DollarSign className="w-4 h-4 text-emerald-600" /> নতুন
@@ -1505,87 +1612,29 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                 </h2>
 
                 <form onSubmit={handleTxSubmit} className="space-y-3">
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                      লেনদেনের ধরন:
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleTypeChange("INCOME")}
-                        className={`py-2 rounded-xl text-xs font-bold border transition-all ${
-                          txType === "INCOME"
-                            ? "bg-emerald-700 text-white border-emerald-700 shadow-xs"
-                            : "bg-white text-slate-600 border-slate-200"
-                        }`}
-                      >
-                        🟢 আয় (Income)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleTypeChange("EXPENSE")}
-                        className={`py-2 rounded-xl text-xs font-bold border transition-all ${
-                          txType === "EXPENSE"
-                            ? "bg-rose-600 text-white border-rose-600 shadow-xs"
-                            : "bg-white text-slate-600 border-slate-200"
-                        }`}
-                      >
-                        🔴 ব্যয় (Expense)
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                      {txType === "INCOME" ? "আয়ের খাত:" : "ব্যয়ের খাত:"}
-                    </label>
-                    <select
-                      value={txCategory}
-                      onChange={(e) => setTxCategory(e.target.value)}
-                      className="w-full text-xs font-bold p-3 rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none"
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleTypeChange("INCOME")}
+                      className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                        txType === "INCOME"
+                          ? "bg-emerald-700 text-white border-emerald-700"
+                          : "bg-white text-slate-600"
+                      }`}
                     >
-                      {txType === "INCOME" ? (
-                        <>
-                          <option value="PATIENT_FEE">
-                            রোগীর ফি (Patient Fee)
-                          </option>
-                          <option value="PRODUCTS_SALE">
-                            তেল/মধু/সামগ্রী বিক্রয় (Products Sale)
-                          </option>
-                          <option value="DONATION_GIFT">
-                            হাদিয়া / অনুদান (Donation/Gift)
-                          </option>
-                          <option value="OTHER_INCOME">
-                            অন্যান্য আয় (Other Income)
-                          </option>
-                        </>
-                      ) : (
-                        <>
-                          <option value="RENT">সেন্টার ভাড়া (Rent)</option>
-                          <option value="MEDICINE_CUPS">
-                            হিজামা কাপ ও সার্জিক্যাল সামগ্রী (Supplies)
-                          </option>
-                          <option value="PRODUCTS_PURCHASE">
-                            তেল, মধু ও কাঁচামাল ক্রয় (Stock Purchase)
-                          </option>
-                          <option value="UTILITY">
-                            বিদ্যুৎ, পানি ও ইন্টারনেট বিল (Utility)
-                          </option>
-                          <option value="STAFF_SALARY">
-                            স্টাফ / থেরাপিস্ট সম্মানী (Salary)
-                          </option>
-                          <option value="CONVEYANCE">
-                            যাতায়াত ও পরিবহন খরচ (Conveyance)
-                          </option>
-                          <option value="REFRESHMENT">
-                            মেহমানদারি ও নাস্তা (Refreshment)
-                          </option>
-                          <option value="OTHER_EXPENSE">
-                            অন্যান্য ব্যয় (Other Expense)
-                          </option>
-                        </>
-                      )}
-                    </select>
+                      🟢 আয়
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTypeChange("EXPENSE")}
+                      className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                        txType === "EXPENSE"
+                          ? "bg-rose-600 text-white border-rose-600"
+                          : "bg-white text-slate-600"
+                      }`}
+                    >
+                      🔴 ব্যয়
+                    </button>
                   </div>
 
                   <div>
@@ -1598,7 +1647,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                       value={txAmount}
                       onChange={(e) => setTxAmount(e.target.value)}
                       required
-                      className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none font-bold"
+                      className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50/50 font-bold"
                     />
                   </div>
 
@@ -1616,21 +1665,21 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
 
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                      বিবরণ / নোট (ঐচ্ছিক):
+                      বিবরণ / নোট:
                     </label>
                     <input
                       type="text"
-                      placeholder="যেমন: মাসিক দোকান ভাড়া পরিশোধ"
+                      placeholder="যেমন: বিদ্যুৎ বিল পরিশোধ"
                       value={txNote}
                       onChange={(e) => setTxNote(e.target.value)}
-                      className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none"
+                      className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50/50"
                     />
                   </div>
 
                   <button
                     type="submit"
                     disabled={isSubmittingTx}
-                    className="w-full bg-slate-800 hover:bg-slate-900 text-white font-extrabold py-3.5 rounded-2xl text-xs shadow-md transition-all flex items-center justify-center gap-2 active:scale-95"
+                    className="w-full bg-slate-800 hover:bg-slate-900 text-white font-extrabold py-3.5 rounded-2xl text-xs shadow-md transition-all flex items-center justify-center gap-2"
                   >
                     {isSubmittingTx ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -1642,19 +1691,13 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                 </form>
               </div>
 
-              {/* ফিল্টার করা লেনদেন তালিকা টেবিল */}
               <div className="md:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
                 <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-black text-slate-800">
-                      লেনদেন লেজার রিপোর্ট
-                    </h2>
-                    <p className="text-[10px] text-slate-400">
-                      সকল রোগীর ফি ও আয়-ব্যয়ের হিসাব সমন্বিত
-                    </p>
-                  </div>
+                  <h2 className="text-sm font-black text-slate-800">
+                    লেনদেন লেজার তালিকা
+                  </h2>
                   <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
-                    মোট: {filteredTransactions.length} টি এন্ট্রি
+                    মোট: {filteredTransactions.length} টি
                   </span>
                 </div>
 
@@ -1670,47 +1713,33 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filteredTransactions.length === 0 ? (
-                        <tr>
+                      {filteredTransactions.map((t) => (
+                        <tr key={t.id} className="hover:bg-slate-50">
+                          <td className="p-3.5 text-slate-500">{t.date}</td>
+                          <td className="p-3.5 font-bold text-slate-800">
+                            {getCategoryNameBn(t.category)}
+                          </td>
+                          <td className="p-3.5 text-slate-600 max-w-[140px] truncate">
+                            {t.note || "—"}
+                          </td>
+                          <td className="p-3.5">
+                            <span
+                              className={`px-2 py-0.5 rounded-full font-extrabold text-[10px] ${
+                                t.type === "INCOME"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-rose-100 text-rose-800"
+                              }`}
+                            >
+                              {t.type === "INCOME" ? "🟢 আয়" : "🔴 ব্যয়"}
+                            </span>
+                          </td>
                           <td
-                            colSpan={5}
-                            className="text-center p-8 text-slate-400"
+                            className={`p-3.5 font-black text-right ${t.type === "INCOME" ? "text-emerald-700" : "text-rose-600"}`}
                           >
-                            নির্বাচিত সময়ে কোনো লেনদেনের রেকর্ড পাওয়া যায়নি।
+                            {t.type === "INCOME" ? "+" : "-"}৳{t.amount}
                           </td>
                         </tr>
-                      ) : (
-                        filteredTransactions.map((t) => (
-                          <tr
-                            key={t.id}
-                            className="hover:bg-slate-50 transition-colors"
-                          >
-                            <td className="p-3.5 text-slate-500">{t.date}</td>
-                            <td className="p-3.5 font-bold text-slate-800">
-                              {getCategoryNameBn(t.category)}
-                            </td>
-                            <td className="p-3.5 text-slate-600 max-w-[140px] truncate">
-                              {t.note || "—"}
-                            </td>
-                            <td className="p-3.5">
-                              <span
-                                className={`px-2 py-0.5 rounded-full font-extrabold text-[10px] ${
-                                  t.type === "INCOME"
-                                    ? "bg-emerald-100 text-emerald-800"
-                                    : "bg-rose-100 text-rose-800"
-                                }`}
-                              >
-                                {t.type === "INCOME" ? "🟢 আয়" : "🔴 ব্যয়"}
-                              </span>
-                            </td>
-                            <td
-                              className={`p-3.5 font-black text-right ${t.type === "INCOME" ? "text-emerald-700" : "text-rose-600"}`}
-                            >
-                              {t.type === "INCOME" ? "+" : "-"}৳{t.amount}
-                            </td>
-                          </tr>
-                        ))
-                      )}
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -1718,26 +1747,191 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
             </div>
           </div>
         )}
+
+        {/* ট্যাব ৩: আমল ও মেসেজ শিডিউলার */}
+        {activeTab === "MESSAGES" && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* নতুন শিডিউল মেসেজ ফর্ম */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm h-fit space-y-4">
+              <h2 className="text-sm font-black text-slate-800 flex items-center gap-2 border-b pb-2">
+                <MessageSquare className="w-4 h-4 text-emerald-600" /> নতুন
+                মেসেজ শিডিউল করুন
+              </h2>
+
+              <form onSubmit={handleScheduleMsgSubmit} className="space-y-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                    রোগীর ক্যাটাগরি:
+                  </label>
+                  <select
+                    value={msgCategory}
+                    onChange={(e) => setMsgCategory(e.target.value)}
+                    className="w-full text-xs font-bold p-3 rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none"
+                  >
+                    <option value="ALL">সকল রোগী (সকলের জন্য)</option>
+                    <option value="JINN">👿 শুধু জ্বিনের রোগী</option>
+                    <option value="SIHR">🪄 শুধু যাদুর রোগী</option>
+                    <option value="AYN">👁️ শুধু বদনজরের রোগী</option>
+                    <option value="PHYSICAL_HIJAMA">🩸 শুধু হিজামা রোগী</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                      সময় (Slot):
+                    </label>
+                    <select
+                      value={msgTimeSlot}
+                      onChange={(e) => setMsgTimeSlot(e.target.value)}
+                      className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-200 bg-slate-50/50"
+                    >
+                      <option value="MORNING">সকাল ৮:০০ টা</option>
+                      <option value="EVENING">বিকেল ৫:০০ টা</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                      কততম দিন (১-৩০):
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="যেমন: ১ বা ২"
+                      value={msgDayNumber}
+                      onChange={(e) => setMsgDayNumber(e.target.value)}
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-slate-50/50"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                    অথবা নির্দিষ্ট তারিখ (ঐচ্ছিক):
+                  </label>
+                  <input
+                    type="date"
+                    value={msgSpecificDate}
+                    onChange={(e) => setMsgSpecificDate(e.target.value)}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-slate-50/50"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[11px] font-bold text-slate-600">
+                      হোয়াটসঅ্যাপ মেসেজের বার্তা:
+                    </label>
+                    <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                      রোগীর নাম = {"{name}"}
+                    </span>
+                  </div>
+                  <textarea
+                    rows={6}
+                    placeholder="আসসালামু আলাইকুম {name}! আজকের বিশেষ আমল হলো..."
+                    value={msgContent}
+                    onChange={(e) => setMsgContent(e.target.value)}
+                    required
+                    className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none leading-relaxed"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingMsg}
+                  className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold py-3.5 rounded-2xl text-xs shadow-md transition-all flex items-center justify-center gap-2"
+                >
+                  {isSubmittingMsg ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <PlusCircle className="w-4 h-4" />
+                  )}
+                  <span>মেসেজ সংরক্ষণ করুন</span>
+                </button>
+              </form>
+            </div>
+
+            {/* সংরক্ষিত মেসেজ তালিকা */}
+            <div className="md:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col p-4 space-y-3">
+              <div className="border-b pb-2 flex justify-between items-center">
+                <h3 className="text-sm font-black text-slate-800">
+                  নির্ধারিত শিডিউল মেসেজ তালিকা ({scheduledMsgs.length})
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  অটোমেটিক সকাল/বিকেলে যাবে
+                </p>
+              </div>
+
+              <div className="overflow-y-auto max-h-[550px] space-y-3 pr-1">
+                {scheduledMsgs.length === 0 ? (
+                  <div className="text-center p-8 text-slate-400 text-xs">
+                    এখনো কোনো কাস্টম মেসেজ যোগ করা হয়নি। ডিফল্ট মাসনুন আমল
+                    যাচ্ছে।
+                  </div>
+                ) : (
+                  scheduledMsgs.map((m) => (
+                    <div
+                      key={m.id}
+                      className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-2 relative"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                              m.timeSlot === "MORNING"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-purple-100 text-purple-800"
+                            }`}
+                          >
+                            {m.timeSlot === "MORNING"
+                              ? "☀️ সকাল ৮:০০ টা"
+                              : "🌙 বিকেল ৫:০০ টা"}
+                          </span>
+                          <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                            {m.category === "ALL" ? "সকল রোগী" : m.category}
+                          </span>
+                          {m.dayNumber && (
+                            <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                              দিন {m.dayNumber}
+                            </span>
+                          )}
+                          {m.date && (
+                            <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                              তারিখ: {m.date}
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteScheduledMsg(m.id)}
+                          className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+                          title="মুছে ফেলুন"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <p className="text-xs text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 whitespace-pre-wrap font-sans">
+                        {m.message}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
-      {/* নতুন রাক্বী যুক্ত করার মডাল */}
+      {/* রাক্বী অ্যাড মডাল */}
       {isAddRaqiOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl animate-in zoom-in-95 border border-emerald-100">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl border border-emerald-100">
             <div className="flex items-center justify-between border-b pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
-                  <UserCheck2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-sm">
-                    নতুন চিকিৎসক / রাক্বী যোগ করুন
-                  </h3>
-                  <p className="text-[10px] text-slate-500">
-                    তালিকায় নতুন রাক্বীর নাম যুক্ত হবে
-                  </p>
-                </div>
-              </div>
+              <h3 className="font-extrabold text-slate-900 text-sm">
+                নতুন রাক্বী যোগ করুন
+              </h3>
               <button
                 onClick={() => setIsAddRaqiOpen(false)}
                 className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500"
@@ -1746,109 +1940,57 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
               </button>
             </div>
 
-            {/* বর্তমান রাক্বীদের তালিকা ও ডিলিট অপশন */}
             <div className="space-y-1.5 border-b pb-3">
-              <label className="text-[11px] font-bold text-slate-700 block">
-                বর্তমান রাক্বী তালিকা:
-              </label>
               <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
-                {raqis.length === 0 ? (
-                  <p className="text-[10px] text-slate-400 italic">
-                    কোনো রাক্বী যুক্ত নেই
-                  </p>
-                ) : (
-                  raqis.map((r) => (
-                    <div
-                      key={r.id}
-                      className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-200"
+                {raqis.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-200"
+                  >
+                    <span className="font-bold text-xs text-slate-800">
+                      {r.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteRaqi(r.id, r.name)}
+                      className="p-1.5 text-rose-500 hover:text-rose-700"
                     >
-                      <div>
-                        <span className="font-bold text-xs text-slate-800 block">
-                          {r.name}
-                        </span>
-                        {r.phone && (
-                          <span className="text-[10px] text-slate-400">
-                            {r.phone}
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteRaqi(r.id, r.name)}
-                        className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
-                        title="মুছে ফেলুন"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))
-                )}
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
 
             <form onSubmit={handleAddRaqiSubmit} className="space-y-3">
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  রাক্বীর নাম (টাইটেল সহ):
-                </label>
-                <input
-                  type="text"
-                  placeholder="যেমন: হাফেজ ক্বারী মাওলানা আব্দুল্লাহ"
-                  value={newRaqiName}
-                  onChange={(e) => setNewRaqiName(e.target.value)}
-                  required
-                  className="w-full text-xs font-bold p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  মোবাইল নাম্বার (ঐচ্ছিক):
-                </label>
-                <input
-                  type="tel"
-                  placeholder="যেমন: 01700000000"
-                  value={newRaqiPhone}
-                  onChange={(e) => setNewRaqiPhone(e.target.value)}
-                  className="w-full text-xs font-bold p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
+              <input
+                type="text"
+                placeholder="রাক্বীর নাম (টাইটেল সহ)"
+                value={newRaqiName}
+                onChange={(e) => setNewRaqiName(e.target.value)}
+                required
+                className="w-full text-xs font-bold p-3 rounded-xl border border-slate-200 bg-slate-50"
+              />
               <button
                 type="submit"
                 disabled={isSubmittingRaqi}
-                className="w-full mt-2 bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold py-3.5 rounded-2xl text-xs shadow-md transition-all flex items-center justify-center gap-2 active:scale-95"
+                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold py-3.5 rounded-2xl text-xs"
               >
-                {isSubmittingRaqi ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Plus className="w-4 h-4" />
-                )}
-                <span>রাক্বী সংরক্ষণ করুন</span>
+                সংরক্ষণ করুন
               </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* ১-ক্লিক উপস্থিতি ও সেশন সম্পন্ন মডাল */}
+      {/* সেশন উপস্থিতি মডাল */}
       {patientForAttendance && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl animate-in zoom-in-95 border border-emerald-100">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl border border-emerald-100">
             <div className="flex items-center justify-between border-b pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
-                  <UserCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-sm">
-                    উপস্থিতি ও সেশন সম্পন্ন
-                  </h3>
-                  <p className="text-[10px] text-slate-500">
-                    {patientForAttendance.name} ({patientForAttendance.phone})
-                  </p>
-                </div>
-              </div>
+              <h3 className="font-extrabold text-slate-900 text-sm">
+                উপস্থিতি ও সেশন সম্পন্ন
+              </h3>
               <button
                 onClick={() => setPatientForAttendance(null)}
                 className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500"
@@ -1868,70 +2010,55 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                   value={sessionFee}
                   onChange={(e) => setSessionFee(e.target.value)}
                   required
-                  className="w-full text-xs font-bold p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 text-emerald-800"
+                  className="w-full text-xs font-bold p-3 rounded-xl border border-slate-200 bg-slate-50 text-emerald-800"
                 />
               </div>
 
               <div>
                 <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  পরবর্তী ফলো-আপের নতুন তারিখ:
+                  পরবর্তী ফলো-আপ তারিখ:
                 </label>
                 <input
                   type="date"
                   value={newNextFollowUp}
                   onChange={(e) => setNewNextFollowUp(e.target.value)}
-                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50"
                 />
               </div>
 
               <div>
                 <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  বর্তমান অবস্থা / সমস্যা আপডেট (ঐচ্ছিক):
+                  সমস্যা / নোট আপডেট:
                 </label>
                 <input
                   type="text"
-                  placeholder="যেমন: ব্যথা ৫০% কমেছে, আরও ১টি সেশন লাগবে"
+                  placeholder="যেমন: উন্নতি হচ্ছে"
                   value={updatedProblemNote}
                   onChange={(e) => setUpdatedProblemNote(e.target.value)}
-                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isUpdatingSession}
-                className="w-full mt-2 bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold py-3.5 rounded-2xl text-xs shadow-md transition-all flex items-center justify-center gap-2 active:scale-95"
+                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold py-3.5 rounded-2xl text-xs"
               >
-                {isUpdatingSession ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="w-4 h-4" />
-                )}
-                <span>সেশন সম্পন্ন ও রসিদ পাঠান</span>
+                সেশন সম্পন্ন ও রসিদ পাঠান
               </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* রোগীর বিস্তারিত হিস্ট্রি ও প্রোফাইল মডাল */}
+      {/* বিস্তারিত ভিউ মডাল */}
       {selectedPatientForView && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl animate-in zoom-in-95 border border-slate-100">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl border border-slate-100">
             <div className="flex items-center justify-between border-b pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                  👤
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-sm">
-                    {selectedPatientForView.name}
-                  </h3>
-                  <p className="text-[10px] text-slate-500">
-                    রোগীর প্রোফাইল ও ট্রিটমেন্ট হিস্ট্রি
-                  </p>
-                </div>
-              </div>
+              <h3 className="font-extrabold text-slate-900 text-sm">
+                {selectedPatientForView.name}
+              </h3>
               <button
                 onClick={() => setSelectedPatientForView(null)}
                 className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500"
@@ -1940,110 +2067,50 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
               </button>
             </div>
 
-            <div className="space-y-2.5 text-xs text-slate-700 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-              <div className="flex justify-between border-b pb-1.5 border-slate-200">
-                <span className="text-slate-500">মোবাইল:</span>
-                <span className="font-bold text-slate-900">
+            <div className="space-y-2 text-xs text-slate-700 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+              <div className="flex justify-between border-b pb-1">
+                <span>মোবাইল:</span>
+                <span className="font-bold">
                   {selectedPatientForView.phone}
                 </span>
               </div>
-              <div className="flex justify-between border-b pb-1.5 border-slate-200">
-                <span className="text-slate-500">চিকিৎসক / রাক্বী:</span>
+              <div className="flex justify-between border-b pb-1">
+                <span>চিকিৎসক:</span>
                 <span className="font-bold text-emerald-800">
                   {selectedPatientForView.raqiName || "প্রধান রাক্বী"}
                 </span>
               </div>
-              <div className="flex justify-between border-b pb-1.5 border-slate-200">
-                <span className="text-slate-500">রোগের ধরন:</span>
+              <div className="flex justify-between border-b pb-1">
+                <span>সমস্যা:</span>
                 <div>
                   {getProblemBadge(selectedPatientForView.problemCategory)}
                 </div>
               </div>
-              <div className="flex justify-between border-b pb-1.5 border-slate-200">
-                <span className="text-slate-500">গৃহীত সেবা:</span>
-                <span className="font-bold text-emerald-800">
-                  {selectedPatientForView.serviceType === "RUKYAH"
-                    ? "শরঈ রুকিয়াহ"
-                    : selectedPatientForView.serviceType === "HIJAMA"
-                      ? "সুন্নতি হিজামা"
-                      : "রুকিয়াহ + হিজামা"}
-                </span>
-              </div>
-
-              <div className="flex justify-between border-b pb-1.5 border-slate-200">
-                <span className="text-slate-500">সর্বশেষ সেশন:</span>
-                <span className="font-bold text-slate-900">
-                  {selectedPatientForView.sessionDate}
-                </span>
-              </div>
-              <div className="flex justify-between border-b pb-1.5 border-slate-200">
-                <span className="text-slate-500">পরবর্তী ফলো-আপ:</span>
+              <div className="flex justify-between border-b pb-1">
+                <span>পরবর্তী ফলো-আপ:</span>
                 <span className="font-bold text-amber-800">
-                  {selectedPatientForView.nextFollowUp || "নির্ধারিত নেই"}
+                  {selectedPatientForView.nextFollowUp || "নেই"}
                 </span>
               </div>
-
-              <div>
-                <span className="text-slate-500 block mb-0.5">
-                  নির্দিষ্ট সমস্যা / নোট:
-                </span>
-                <p className="font-medium text-slate-800 bg-white p-2 rounded-xl border border-slate-200">
-                  {selectedPatientForView.problem || "কোনো বিবরণ নেই"}
-                </p>
-              </div>
-
-              {/* রোগীর আগের সকল সেশন ও পেমেন্ট হিস্ট্রি টাইমলাইন */}
-              <div className="pt-2">
-                <span className="text-slate-500 font-bold block mb-1.5 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5" /> সেশন ও পেমেন্ট হিস্ট্রি:
-                </span>
-                <div className="max-h-24 overflow-y-auto space-y-1.5 pr-1">
-                  {(() => {
-                    const patientTxs = getPatientSessions(
-                      selectedPatientForView.name,
-                    );
-                    if (patientTxs.length === 0) {
-                      return (
-                        <p className="text-[10px] text-slate-400 italic">
-                          কোনো পূর্ববর্তী সেশন রেকর্ড নেই।
-                        </p>
-                      );
-                    }
-                    return patientTxs.map((tx: any, idx: number) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between bg-white p-2 rounded-lg border border-slate-200 text-[10px]"
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          <span className="font-bold text-slate-700">
-                            {tx.date}
-                          </span>
-                        </div>
-                        <span className="font-black text-emerald-700">
-                          ৳{tx.amount}
-                        </span>
-                      </div>
-                    ));
-                  })()}
-                </div>
-              </div>
+              <p className="p-2 bg-white rounded-xl border border-slate-200 mt-2">
+                {selectedPatientForView.problem || "কোনো নোট নেই"}
+              </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="grid grid-cols-2 gap-2">
               <a
                 href={`https://wa.me/${selectedPatientForView.phone.replace(/\D/g, "")}`}
                 target="_blank"
                 rel="noreferrer"
-                className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                className="py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
               >
                 <MessageCircle className="w-3.5 h-3.5" /> হোয়াটসঅ্যাপ
               </a>
               <a
                 href={`tel:${selectedPatientForView.phone}`}
-                className="py-2.5 px-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                className="py-2.5 bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
               >
-                <Phone className="w-3.5 h-3.5" /> সরাসরি কল
+                <Phone className="w-3.5 h-3.5" /> কল করুন
               </a>
             </div>
           </div>

@@ -24,6 +24,9 @@ export async function POST(request: Request) {
       );
     }
 
+    const todayDate = sessionDate || new Date().toISOString().split("T")[0];
+
+    // ১. পেশেন্ট তৈরি
     const patient = await db.patient.create({
       data: {
         name: String(name),
@@ -31,15 +34,29 @@ export async function POST(request: Request) {
         problem: String(problem || "সাধারণ সমস্যা"),
         serviceType: String(serviceType || "RUKYAH"),
         feePaid: parseFloat(feePaid),
-        sessionDate: String(
-          sessionDate || new Date().toISOString().split("T")[0],
-        ),
+        sessionDate: String(todayDate),
         nextFollowUp: nextFollowUp ? String(nextFollowUp) : null,
         raqiName: String(raqiName || "প্রধান রাক্বী"),
         problemCategory: String(problemCategory || "JINN"),
       },
     });
 
+    // ২. লেজারে আয় (Transaction) হিসেবে যুক্ত করা
+    try {
+      await db.transaction.create({
+        data: {
+          type: "INCOME",
+          category: "PATIENT_FEE",
+          amount: parseFloat(feePaid),
+          note: `প্রাথমিক রেজিস্ট্রেশন ও ফি: ${name}`,
+          date: todayDate,
+        },
+      });
+    } catch (txErr) {
+      console.error("Auto Transaction Create Warning:", txErr);
+    }
+
+    // ৩. ক্যাটাগরি ভিত্তিক স্বাগতম মেসেজ তৈরি
     try {
       const phoneNumberStr = String(phone || "");
       if (phoneNumberStr) {
@@ -48,17 +65,30 @@ export async function POST(request: Request) {
             ? "শরঈ রুকিয়াহ"
             : serviceType === "HIJAMA"
               ? "সুন্নতি হিজামা"
-              : "রুকিয়াহ ও হিজামা উভয় সার্ভিস";
+              : "রুকিয়াহ ও হিজামা উভয় সেবা";
+
+        let adviceText = "";
+        if (problemCategory === "SIHR") {
+          adviceText =
+            "\n\n💡 *প্রাথমিক পরামর্শ:* রুকইয়াহ তেল ও পানি ব্যবহার শুরু করুন এবং প্রতিদিন সূরা বাকারার শেষ দুই আয়াত পাঠ করুন।";
+        } else if (problemCategory === "JINN") {
+          adviceText =
+            "\n\n💡 *হিফাযতের পরামর্শ:* পাঁচ ওয়াক্ত সালাত শেষে এবং শোয়ার আগে আয়াতুল কুরসী তিলাওয়াত করুন।";
+        } else if (problemCategory === "AYN") {
+          adviceText =
+            "\n\n💡 *বদনজর মুক্তির পরামর্শ:* সকাল-সন্ধ্যায় তিন কুল পড়ে ফুঁ দিন এবং মাসনুন দোয়া পাঠ চালু রাখুন।";
+        }
+
         const welcomeMsg = `*আদ দাওয়াহ রুকইয়াহ এন্ড হিজামা সাপোর্ট*
 
 আসসালামু আলাইকুম ${name}!
 আজ আমাদের সেন্টারে আপনার সেবা (${serviceNameBn}) সফলভাবে সম্পন্ন হয়েছে।
 🩺 চিকিৎসায় ছিলেন: ${raqiName || "প্রধান রাক্বী"}
 💰 পরিশোধিত ফি: ৳${feePaid}
-📅 তারিখ: ${sessionDate}
-${nextFollowUp ? `🔄 পরবর্তী ফলো-আপ: ${nextFollowUp}` : ""}
+📅 তারিখ: ${todayDate}
+${nextFollowUp ? `🔄 পরবর্তী ফলো-আপ: ${nextFollowUp}` : ""}${adviceText}
 
-আল্লাহ তায়ালা আপনাকে পরিপূর্ণ শিফা দান করুন। আমিন!`;
+আল্লাহ তায়ালা আপনাকে পরিপূর্ণ শেফা দান করুন। আমিন!`;
 
         await sendWhatsAppMessage(phoneNumberStr, welcomeMsg);
       }
@@ -88,7 +118,7 @@ export async function GET() {
   }
 }
 
-// সেশন সম্পন্ন / উপস্থিতি আপডেট করার শতভাগ কার্যকরী PATCH API
+// সেশন সম্পন্ন / উপস্থিতি আপডেট (সম্পূর্ণ Prisma ও MySQL উপযোগী)
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
@@ -105,69 +135,54 @@ export async function PATCH(request: Request) {
     const today = sessionDate || new Date().toISOString().split("T")[0];
     const addFee = Number(newFee || 0);
 
-    const sqlite = (db as any).sqlite;
-    if (!sqlite) {
-      return NextResponse.json(
-        { error: "Database connection error" },
-        { status: 500 },
-      );
-    }
+    const existingPatient = await db.patient.findUnique({
+      where: { id: patientId },
+    });
 
-    // ১. রোগীর পুরানো তথ্য ফেচ করা
-    const getStmt = sqlite.prepare('SELECT * FROM "Patient" WHERE "id" = ?');
-    const patient: any = getStmt.get(patientId);
-
-    if (!patient) {
+    if (!existingPatient) {
       return NextResponse.json({ error: "রোগী পাওয়া যায়নি" }, { status: 404 });
     }
 
-    const updatedTotalFee = Number(patient.feePaid || 0) + addFee;
+    const updatedTotalFee = Number(existingPatient.feePaid || 0) + addFee;
 
-    // ২. রোগীর ডাটাবেজ আপডেট (ফি, সেশন ডেট, ফলো-আপ ও সমস্যা নোট)
-    const updateStmt = sqlite.prepare(`
-      UPDATE "Patient" 
-      SET "feePaid" = ?, "sessionDate" = ?, "nextFollowUp" = ?, "problem" = ?
-      WHERE "id" = ?
-    `);
-    updateStmt.run(
-      updatedTotalFee,
-      today,
-      nextFollowUp || null,
-      String(problemUpdate || patient.problem),
-      String(patientId),
-    );
+    // ১. পেশেন্ট আপডেট
+    const updatedPatient = await db.patient.update({
+      where: { id: patientId },
+      data: {
+        feePaid: updatedTotalFee,
+        sessionDate: today,
+        nextFollowUp: nextFollowUp || null,
+        problem: String(problemUpdate || existingPatient.problem),
+      },
+    });
 
-    // ৩. নতুন সেশনের ফি লেজারে আয় (INCOME) হিসেবে যোগ করা
+    // ২. নতুন ফি ট্রানজেকশনে যোগ করা
     if (addFee > 0) {
-      const txId = "tx_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
-      const txStmt = sqlite.prepare(`
-        INSERT INTO "Transaction" ("id", "type", "category", "amount", "note", "date", "createdAt")
-        VALUES (?, 'INCOME', 'PATIENT_FEE', ?, ?, ?, ?)
-      `);
-      txStmt.run(
-        txId,
-        addFee,
-        `ফলো-আপ সেশন ফি: ${patient.name}`,
-        today,
-        new Date().toISOString(),
-      );
+      await db.transaction.create({
+        data: {
+          type: "INCOME",
+          category: "PATIENT_FEE",
+          amount: addFee,
+          note: `ফলো-আপ সেশন ফি: ${existingPatient.name}`,
+          date: today,
+        },
+      });
     }
 
-    // ৪. রোগীকে নতুন সেশনের হোয়াটসঅ্যাপ রসিদ পাঠানো
+    // ৩. হোয়াটসঅ্যাপ আপডেট মেসেজ পাঠানো
     try {
-      if (patient.phone) {
+      if (existingPatient.phone) {
         const updateMsg = `*আদ দাওয়াহ রুকইয়াহ এন্ড হিজামা সাপোর্ট*
 
-আসসালামু আলাইকুম ${patient.name}!
-আলহামদুলিল্লাহ, আজ (${today}) সেন্টারে আপনার সেশনটি সফলভাবে সম্পন্ন হয়েছে।
-🩺 চিকিৎসায় ছিলেন: ${patient.raqiName || "প্রধান রাক্বী"}
+আসসালামু আলাইকুম ${existingPatient.name}!
+আলহামদুলিল্লাহ, আজ (${today}) সেন্টারে আপনার সেশনটি সম্পন্ন হয়েছে।
+🩺 চিকিৎসায় ছিলেন: ${existingPatient.raqiName || "প্রধান রাক্বী"}
 💰 আজকের সেশন ফি: ৳${addFee} (মোট পরিশোধ: ৳${updatedTotalFee})
 ${nextFollowUp ? `🔄 আপনার পরবর্তী নির্ধারিত ফলো-আপ: ${nextFollowUp}` : "🔄 নিয়মিত আমল ও দোয়া চালু রাখুন।"}
 
-আল্লাহ আপনাকে সুস্থতা দান করুন। আমিন!`;
+আল্লাহ আপনাকে শেফা দান করুন। আমিন!`;
 
-        await sendWhatsAppMessage(patient.phone, updateMsg);
-        console.log(`✅ Session update WhatsApp sent to ${patient.phone}`);
+        await sendWhatsAppMessage(existingPatient.phone, updateMsg);
       }
     } catch (waErr) {
       console.error("WhatsApp Session Receipt Error:", waErr);
@@ -176,11 +191,39 @@ ${nextFollowUp ? `🔄 আপনার পরবর্তী নির্ধা�
     return NextResponse.json({
       success: true,
       message: "সেশন সফলভাবে সম্পন্ন ও আপডেট হয়েছে!",
+      patient: updatedPatient,
     });
   } catch (error: any) {
     console.error("Patient Session Update Error:", error);
     return NextResponse.json(
       { error: error?.message || "Failed to update session" },
+      { status: 500 },
+    );
+  }
+}
+
+// ভুল এন্ট্রি হওয়া রোগী মুছে ফেলার DELETE API
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "রোগীর আইডি আবশ্যক" }, { status: 400 });
+    }
+
+    await db.patient.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "রোগী সফলভাবে মুছে ফেলা হয়েছে",
+    });
+  } catch (error: any) {
+    console.error("Patient Delete Error:", error);
+    return NextResponse.json(
+      { error: error?.message || "Failed to delete patient" },
       { status: 500 },
     );
   }

@@ -27,3 +27,13 @@ model Transaction {
   date        String
   createdAt   DateTime @default(now())
 }
+
+model ScheduledMessage {
+  id        String   @id @default(uuid())
+  category  String   // SIHR, JINN, AYN, HIJAMA, ALL
+  timeSlot  String   // MORNING, EVENING
+  dayNumber Int?     // ১ থেকে ৩০ দিন (অথবা নির্দিষ্ট তারিখের জন্য)
+  date      String?  // যেমন: 2026-11-25 (যদি নির্দিষ্ট তারিখে পাঠাতে চান)
+  message   String   @db.Text
+  createdAt DateTime @default(now())
+}
