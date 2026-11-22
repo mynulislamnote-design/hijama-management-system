@@ -71,9 +71,10 @@ interface ScheduledMsg {
   id: string;
   category: string;
   timeSlot: string;
-  dayNumber?: number;
-  date?: string;
+  dayNumber?: number | null;
+  date?: string | null;
   message: string;
+  createdAt?: string;
 }
 
 const getCategoryNameBn = (cat: string) => {
@@ -234,6 +235,7 @@ export default function HijamaAdminDashboard() {
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
 
+  // লেনদেন এন্ট্রি ফর্ম স্টেট (পূর্ণাঙ্গ ক্যাটাগরি সহ)
   const [txType, setTxType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [txCategory, setTxCategory] = useState("PATIENT_FEE");
   const [txAmount, setTxAmount] = useState("");
@@ -327,10 +329,13 @@ export default function HijamaAdminDashboard() {
     }
   };
 
-  // শিডিউল মেসেজ সাবমিট ও ডিলিট
+  // শিডিউল মেসেজ সাবমিট
   const handleScheduleMsgSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!msgContent.trim()) return;
+    if (!msgContent.trim()) {
+      alert("দয়া করে মেসেজের বার্তা লিখুন!");
+      return;
+    }
 
     setIsSubmittingMsg(true);
     try {
@@ -346,6 +351,8 @@ export default function HijamaAdminDashboard() {
         }),
       });
 
+      const data = await res.json();
+
       if (res.ok) {
         setSuccessMsg(
           "নতুন আমল / মেসেজ সফলভাবে শিডিউল তালিকায় সংরক্ষিত হয়েছে!",
@@ -355,9 +362,11 @@ export default function HijamaAdminDashboard() {
         setMsgSpecificDate("");
         await fetchData();
         setTimeout(() => setSuccessMsg(""), 5000);
+      } else {
+        alert(`মেসেজ সংরক্ষণ ব্যর্থ হয়েছে: ${data.error || "অজানা সমস্যা"}`);
       }
-    } catch (err) {
-      alert("মেসেজ সংরক্ষণ ব্যর্থ হয়েছে");
+    } catch (err: any) {
+      alert(`সার্ভার এরর: ${err.message}`);
     } finally {
       setIsSubmittingMsg(false);
     }
@@ -371,6 +380,8 @@ export default function HijamaAdminDashboard() {
       });
       if (res.ok) {
         setScheduledMsgs((prev) => prev.filter((m) => m.id !== id));
+      } else {
+        alert("মুছে ফেলা সম্ভব হয়নি!");
       }
     } catch (err) {
       alert("সার্ভার এরর");
@@ -834,7 +845,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
           </div>
 
           <form onSubmit={handleAdminLogin} className="space-y-4">
-            {/* ব্রাউজার যাতে বুঝতে পারে এটি একটি অ্যাডমিন অ্যাকাউন্ট */}
             <input
               type="text"
               name="username"
@@ -875,7 +885,6 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                 </button>
               </div>
 
-              {/* পাসওয়ার্ড মনে রাখার অপশন */}
               <div className="flex items-center gap-2 pt-1.5">
                 <input
                   type="checkbox"
@@ -1513,6 +1522,29 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                 </div>
               </div>
 
+              {txTimeFilter === "CUSTOM" && (
+                <div className="bg-amber-50/60 p-3 rounded-2xl border border-amber-200 flex flex-wrap items-center gap-3 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-950">
+                    <span>শুরুর তারিখ:</span>
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="p-1.5 rounded-xl border border-amber-300 bg-white"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-950">
+                    <span>শেষের তারিখ:</span>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="p-1.5 rounded-xl border border-amber-300 bg-white"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                 <div className="flex flex-wrap items-center gap-3">
                   <select
@@ -1533,15 +1565,22 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                     <option value="ALL">সকল খাত</option>
                     <optgroup label="আয়ের খাতসমূহ">
                       <option value="PATIENT_FEE">রোগীর ফি</option>
-                      <option value="PRODUCTS_SALE">তেল/মধু বিক্রয়</option>
+                      <option value="PRODUCTS_SALE">
+                        তেল/মধু/সামগ্রী বিক্রয়
+                      </option>
                       <option value="DONATION_GIFT">হাদিয়া / অনুদান</option>
                       <option value="OTHER_INCOME">অন্যান্য আয়</option>
                     </optgroup>
                     <optgroup label="ব্যয়ের খাতসমূহ">
                       <option value="RENT">সেন্টার ভাড়া</option>
                       <option value="MEDICINE_CUPS">হিজামা সামগ্রী</option>
-                      <option value="STAFF_SALARY">স্টাফ সম্মানী</option>
+                      <option value="PRODUCTS_PURCHASE">
+                        তেল/মধু স্টক ক্রয়
+                      </option>
                       <option value="UTILITY">বিদ্যুৎ ও নেট বিল</option>
+                      <option value="STAFF_SALARY">স্টাফ সম্মানী</option>
+                      <option value="CONVEYANCE">যাতায়াত খরচ</option>
+                      <option value="REFRESHMENT">মেহমানদারি ও নাস্তা</option>
                       <option value="OTHER_EXPENSE">অন্যান্য ব্যয়</option>
                     </optgroup>
                   </select>
@@ -1603,7 +1642,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
               </div>
             </div>
 
-            {/* লেনদেন এন্ট্রি ও টেবিল */}
+            {/* লেনদেন এন্ট্রি ও টেবিল (আগের পূর্ণ ড্রপডাউন মেনু সহ) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm h-fit space-y-4">
                 <h2 className="text-sm font-black text-slate-800 flex items-center gap-2 border-b pb-2">
@@ -1618,23 +1657,77 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                       onClick={() => handleTypeChange("INCOME")}
                       className={`py-2 rounded-xl text-xs font-bold border transition-all ${
                         txType === "INCOME"
-                          ? "bg-emerald-700 text-white border-emerald-700"
-                          : "bg-white text-slate-600"
+                          ? "bg-emerald-700 text-white border-emerald-700 shadow-xs"
+                          : "bg-white text-slate-600 border-slate-200"
                       }`}
                     >
-                      🟢 আয়
+                      🟢 আয় (Income)
                     </button>
                     <button
                       type="button"
                       onClick={() => handleTypeChange("EXPENSE")}
                       className={`py-2 rounded-xl text-xs font-bold border transition-all ${
                         txType === "EXPENSE"
-                          ? "bg-rose-600 text-white border-rose-600"
-                          : "bg-white text-slate-600"
+                          ? "bg-rose-600 text-white border-rose-600 shadow-xs"
+                          : "bg-white text-slate-600 border-slate-200"
                       }`}
                     >
-                      🔴 ব্যয়
+                      🔴 ব্যয় (Expense)
                     </button>
+                  </div>
+
+                  {/* পূর্বের হুবহু ড্রপডাউন মেনু */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                      {txType === "INCOME" ? "আয়ের খাত:" : "ব্যয়ের খাত:"}
+                    </label>
+                    <select
+                      value={txCategory}
+                      onChange={(e) => setTxCategory(e.target.value)}
+                      className="w-full text-xs font-bold p-3 rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none"
+                    >
+                      {txType === "INCOME" ? (
+                        <>
+                          <option value="PATIENT_FEE">
+                            রোগীর ফি (Patient Fee)
+                          </option>
+                          <option value="PRODUCTS_SALE">
+                            তেল/মধু/সামগ্রী বিক্রয় (Products Sale)
+                          </option>
+                          <option value="DONATION_GIFT">
+                            হাদিয়া / অনুদান (Donation/Gift)
+                          </option>
+                          <option value="OTHER_INCOME">
+                            অন্যান্য আয় (Other Income)
+                          </option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="RENT">সেন্টার ভাড়া (Rent)</option>
+                          <option value="MEDICINE_CUPS">
+                            হিজামা কাপ ও সার্জিক্যাল সামগ্রী (Supplies)
+                          </option>
+                          <option value="PRODUCTS_PURCHASE">
+                            তেল, মধু ও কাঁচামাল ক্রয় (Stock Purchase)
+                          </option>
+                          <option value="UTILITY">
+                            বিদ্যুৎ, পানি ও ইন্টারনেট বিল (Utility)
+                          </option>
+                          <option value="STAFF_SALARY">
+                            স্টাফ / থেরাপিস্ট সম্মানী (Salary)
+                          </option>
+                          <option value="CONVEYANCE">
+                            যাতায়াত ও পরিবহন খরচ (Conveyance)
+                          </option>
+                          <option value="REFRESHMENT">
+                            মেহমানদারি ও নাস্তা (Refreshment)
+                          </option>
+                          <option value="OTHER_EXPENSE">
+                            অন্যান্য ব্যয় (Other Expense)
+                          </option>
+                        </>
+                      )}
+                    </select>
                   </div>
 
                   <div>
@@ -1647,7 +1740,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                       value={txAmount}
                       onChange={(e) => setTxAmount(e.target.value)}
                       required
-                      className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50/50 font-bold"
+                      className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none font-bold"
                     />
                   </div>
 
@@ -1665,21 +1758,21 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
 
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                      বিবরণ / নোট:
+                      বিবরণ / নোট (ঐচ্ছিক):
                     </label>
                     <input
                       type="text"
-                      placeholder="যেমন: বিদ্যুৎ বিল পরিশোধ"
+                      placeholder="যেমন: মাসিক দোকান ভাড়া পরিশোধ"
                       value={txNote}
                       onChange={(e) => setTxNote(e.target.value)}
-                      className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50/50"
+                      className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none"
                     />
                   </div>
 
                   <button
                     type="submit"
                     disabled={isSubmittingTx}
-                    className="w-full bg-slate-800 hover:bg-slate-900 text-white font-extrabold py-3.5 rounded-2xl text-xs shadow-md transition-all flex items-center justify-center gap-2"
+                    className="w-full bg-slate-800 hover:bg-slate-900 text-white font-extrabold py-3.5 rounded-2xl text-xs shadow-md transition-all flex items-center justify-center gap-2 active:scale-95"
                   >
                     {isSubmittingTx ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -1839,7 +1932,7 @@ _আদ দাওয়াহ রুকইয়াহ এন্ড হিজা
                 <button
                   type="submit"
                   disabled={isSubmittingMsg}
-                  className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold py-3.5 rounded-2xl text-xs shadow-md transition-all flex items-center justify-center gap-2"
+                  className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold py-3.5 rounded-2xl text-xs shadow-md transition-all flex items-center justify-center gap-2 active:scale-95"
                 >
                   {isSubmittingMsg ? (
                     <Loader2 className="w-4 h-4 animate-spin" />

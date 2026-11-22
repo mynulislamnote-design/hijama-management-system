@@ -8,7 +8,8 @@ export async function GET() {
     });
     return NextResponse.json(messages || []);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("GET Scheduled Messages Error:", error);
+    return NextResponse.json([], { status: 200 });
   }
 }
 
@@ -17,17 +18,23 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { category, timeSlot, dayNumber, date, message } = body;
 
-    if (!message) {
-      return NextResponse.json({ error: "মেসেজ লিখা আবশ্যক" }, { status: 400 });
+    if (!message || !String(message).trim()) {
+      return NextResponse.json(
+        { error: "মেসেজের বার্তা লেখা আবশ্যক!" },
+        { status: 400 },
+      );
     }
 
     const newMessage = await (db as any).scheduledMessage.create({
       data: {
-        category: category || "ALL",
-        timeSlot: timeSlot || "MORNING",
-        dayNumber: dayNumber ? parseInt(dayNumber) : null,
-        date: date || null,
-        message: String(message),
+        category: String(category || "ALL"),
+        timeSlot: String(timeSlot || "MORNING"),
+        dayNumber:
+          dayNumber !== undefined && dayNumber !== null && dayNumber !== ""
+            ? Number(dayNumber)
+            : null,
+        date: date ? String(date) : null,
+        message: String(message).trim(),
       },
     });
 
@@ -36,7 +43,11 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("POST Scheduled Message Error:", error);
+    return NextResponse.json(
+      { error: error?.message || "মেসেজ সংরক্ষণ ব্যর্থ হয়েছে" },
+      { status: 500 },
+    );
   }
 }
 
@@ -46,15 +57,22 @@ export async function DELETE(request: Request) {
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "আইডি আবশ্যক" }, { status: 400 });
+      return NextResponse.json(
+        { error: "মেসেজ আইডি আবশ্যক!" },
+        { status: 400 },
+      );
     }
 
     await (db as any).scheduledMessage.delete({
-      where: { id },
+      where: { id: String(id) },
     });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("DELETE Scheduled Message Error:", error);
+    return NextResponse.json(
+      { error: error?.message || "ডিলিট করা যায়নি" },
+      { status: 500 },
+    );
   }
 }
