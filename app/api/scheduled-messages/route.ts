@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/prisma";
 
+// Next.js বিল্ড টাইমে প্রি-রেন্ডার এরর বন্ধ করার নিশ্চিত উপায়
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const messages = await db.scheduledMessage.findMany({
@@ -51,7 +54,6 @@ export async function POST(request: Request) {
   }
 }
 
-// মেসেজ এডিট / আপডেট করার PUT API
 export async function PUT(request: Request) {
   try {
     const body = await request.json();

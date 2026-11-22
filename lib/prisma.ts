@@ -24,10 +24,11 @@ function createPrismaClient() {
         log: ["error"],
       });
     } catch (e) {
-      console.error("Error parsing DATABASE_URL for adapter:", e);
+      console.error("Error creating PrismaMariaDb adapter:", e);
     }
   }
 
+  // বিল্ড টাইমে কানেকশন না পেলেও যাতে ক্র্যাশ না করে
   return new PrismaClient({
     log: ["error"],
   });
