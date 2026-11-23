@@ -191,43 +191,39 @@ cron.schedule(
 export async function sendDailySummaryReport() {
   const todayStr = getDhakaDateStr();
 
-  // আজকের তথ্য
+  // আজকের মোট রোগী সংখ্যা
   const todayPatients = (await db.patient.findMany({
     where: { sessionDate: todayStr },
   })) as any[];
 
+  // আজকের আয়-ব্যয় লেনদেন
   const todayTransactions = (await db.transaction.findMany({
     where: { date: todayStr },
   })) as any[];
 
-  let todayIncome = todayPatients.reduce((sum, p) => sum + (p.feePaid || 0), 0);
-  todayTransactions
+  // শুধুমাত্র Transaction টেবিল থেকে আজকের আয় এবং ব্যয় গণনা (কোনো ডাবল কাউন্ট হবে না)
+  const todayIncome = todayTransactions
     .filter((t) => t.type === "INCOME")
-    .forEach((t) => (todayIncome += t.amount));
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
-  let todayExpense = todayTransactions
+  const todayExpense = todayTransactions
     .filter((t) => t.type === "EXPENSE")
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
-  let todayNet = todayIncome - todayExpense;
+  const todayNet = todayIncome - todayExpense;
 
-  // সর্বমোট অল-টাইম (Total Lifetime) হিসাব
-  const allPatients = (await db.patient.findMany()) as any[];
+  // শুরু থেকে আজ পর্যন্ত সর্বমোট (Lifetime) লেনদেন
   const allTransactions = (await db.transaction.findMany()) as any[];
 
-  let lifetimeIncome = allPatients.reduce(
-    (sum, p) => sum + (p.feePaid || 0),
-    0,
-  );
-  allTransactions
+  const lifetimeIncome = allTransactions
     .filter((t) => t.type === "INCOME")
-    .forEach((t) => (lifetimeIncome += t.amount));
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
-  let lifetimeExpense = allTransactions
+  const lifetimeExpense = allTransactions
     .filter((t) => t.type === "EXPENSE")
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
-  let totalLifetimeCashBalance = lifetimeIncome - lifetimeExpense;
+  const totalLifetimeCashBalance = lifetimeIncome - lifetimeExpense;
 
   const summaryReport = `📊 *আজকের সারসংক্ষেপ ও ক্যাশ রিপোর্ট*
 📅 তারিখ: ${todayStr}

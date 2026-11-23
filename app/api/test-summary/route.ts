@@ -4,14 +4,11 @@ import { sendDailySummaryReport } from "@/lib/cron";
 export async function POST() {
   try {
     const reportData = await sendDailySummaryReport();
-    return NextResponse.json({
-      success: true,
-      message: "সামারি রিপোর্ট হোয়াটসঅ্যাপে পাঠানো হয়েছে!",
-      data: reportData,
-    });
+    return NextResponse.json({ success: true, data: reportData });
   } catch (error: any) {
+    console.error("Test summary error:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to send" },
+      { error: error?.message || "Failed" },
       { status: 500 },
     );
   }
